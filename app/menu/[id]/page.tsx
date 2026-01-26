@@ -1,4 +1,3 @@
-// app/product/[id]/page.tsx
 'use client';
 
 import { Header } from '@/components/header';
@@ -6,21 +5,26 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { ArrowLeft, ShoppingCart, Minus, Plus } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useCartStore } from '@/lib/cart-store';
 import { toast } from 'sonner';
+
+interface Variant {
+  id: string;
+  label: string;
+  price: number;
+}
 
 interface Product {
   id: string;
   name: string;
   description: string;
   recipe: string | null;
-  price: number;
   image: string;
   category: string | null;
   available: boolean;
+  variants: Variant[]; // <-- add variants array
 }
 
 export default function ProductDetailPage() {
@@ -29,15 +33,20 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [quantity, setQuantity] = useState(1);
+  const [selectedVariant, setSelectedVariant] = useState<Variant | null>(null);
+
   const addItem = useCartStore((state) => state.addItem);
 
   useEffect(() => {
     const fetchProduct = async () => {
       try {
         const res = await fetch('/api/products');
-        const data = await res.json();
-        const foundProduct = data.find((p: Product) => p.id === params.id);
-        if (foundProduct) setProduct(foundProduct);
+        const data: Product[] = await res.json();
+        const foundProduct = data.find((p) => p.id === params.id);
+        if (foundProduct) {
+          setProduct(foundProduct);
+          setSelectedVariant(foundProduct.variants[0] || null); // default to first variant
+        }
         setLoading(false);
       } catch (error) {
         console.error('Error fetching product:', error);
@@ -49,27 +58,32 @@ export default function ProductDetailPage() {
   }, [params.id]);
 
   const handleAddToCart = () => {
-    if (!product) return;
+    if (!product || !selectedVariant) return;
 
     addItem(
       {
         id: product.id,
         name: product.name,
-        price: product.price,
+        price: selectedVariant.price,
         image: product.image,
+        variantId: selectedVariant.id, // store selected variant ID
+        variantLabel: selectedVariant.label,
       },
       quantity
     );
 
-    toast.success(`${quantity} ${product.name} added to cart!`, {
-      duration: 3000,
-      style: {
-        background: '#FEF3C7',
-        border: '1px solid #FBBF24',
-        color: '#92400E',
-        fontWeight: 600,
+    toast.success(
+      `${quantity} ${product.name} (${selectedVariant.label}) added to cart!`,
+      {
+        duration: 3000,
+        style: {
+          background: '#FEF3C7',
+          border: '1px solid #FBBF24',
+          color: '#92400E',
+          fontWeight: 600,
+        },
       }
-    });
+    );
   };
 
   const incrementQuantity = () => setQuantity((q) => q + 1);
@@ -98,7 +112,6 @@ export default function ProductDetailPage() {
 
       {/* Main Content */}
       <main className="pt-24">
-        {/* Product Hero */}
         <div className="container mx-auto px-4 pb-12">
           {/* Back Button */}
           <Button
@@ -136,13 +149,39 @@ export default function ProductDetailPage() {
                     {product.name}
                   </h1>
 
-                  <p className="text-gray-600 text-lg leading-relaxed">
-                    {product.description}
-                  </p>
+                  <div
+                    className="text-gray-600 text-lg leading-relaxed prose prose-lg max-w-none"
+                    dangerouslySetInnerHTML={{ __html: product.description }}
+                  />
 
-                  <div className="flex items-baseline gap-2">
+                  {/* Variant Selector */}
+                  {product.variants.length > 1 && (
+                    <div className="mt-2">
+                      <label className="text-gray-700 font-medium mb-1 block">
+                        Choose Variant
+                      </label>
+                      <select
+                        value={selectedVariant?.id || ''}
+                        onChange={(e) => {
+                          const variant = product.variants.find(
+                            (v) => v.id === e.target.value
+                          );
+                          setSelectedVariant(variant || product.variants[0]);
+                        }}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                      >
+                        {product.variants.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.label} – ₱{v.price.toFixed(2)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="flex items-baseline gap-2 mt-4">
                     <span className="text-4xl font-bold text-amber-600">
-                      ₱{product.price}
+                      ₱{(selectedVariant?.price || product.price).toFixed(2)}
                     </span>
                   </div>
 
@@ -186,7 +225,7 @@ export default function ProductDetailPage() {
                       >
                         <ShoppingCart className="w-5 h-5 mr-2" />
                         Add to Cart – ₱
-                        {(product.price * quantity).toFixed(2)}
+                        {((selectedVariant?.price || product.price) * quantity).toFixed(2)}
                       </Button>
                     </div>
                   ) : (
@@ -207,9 +246,10 @@ export default function ProductDetailPage() {
           <div className="container mx-auto px-4 py-12">
             <Card className="border-2 border-amber-200 shadow-lg">
               <CardContent className="p-8 md:p-12">
-                <div className="prose prose-lg prose-amber max-w-none">
-                  <ReactMarkdown>{product.recipe}</ReactMarkdown>
-                </div>
+                <div
+                  className="prose prose-lg prose-amber max-w-none"
+                  dangerouslySetInnerHTML={{ __html: product.recipe }}
+                />
               </CardContent>
             </Card>
           </div>

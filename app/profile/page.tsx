@@ -120,13 +120,6 @@ export default function ProfilePage() {
       <Header />
       <main className="flex-1 bg-gradient-to-br from-amber-50 to-orange-50 py-12">
         <div className="container mx-auto max-w-3xl px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/"
-            className="inline-flex items-center text-amber-700 hover:text-amber-900 mb-6"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Home
-          </Link>
 
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="bg-gradient-to-r from-amber-600 to-orange-600 px-8 py-6">

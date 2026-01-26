@@ -26,6 +26,7 @@ interface Order {
   total: number;
   orderStatus: string;
   paymentStatus: string;
+  orderSource: string;
   paymentMethod: string;
   createdAt: string;
   orderItems: {
@@ -44,6 +45,7 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('today'); // New date filter state
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [currentNotes, setCurrentNotes] = useState("");
   const [itemsModalOpen, setItemsModalOpen] = useState(false);
@@ -123,6 +125,10 @@ export default function AdminOrdersPage() {
         return 'bg-blue-100 text-blue-800';
       case 'preparing':
         return 'bg-purple-100 text-purple-800';
+      case 'ready for pickup':
+        return 'bg-teal-100 text-teal-800';
+      case 'ready to serve':
+        return 'bg-teal-100 text-teal-800';
       case 'out for delivery':
         return 'bg-indigo-100 text-indigo-800';
       case 'completed':
@@ -164,7 +170,14 @@ export default function AdminOrdersPage() {
       case 'pending':
         return <Clock className="w-4 h-4" />;
       case 'confirmed':
+        return <CheckCircle className="w-4 h-4" />;
       case 'preparing':
+        return <Package className="w-4 h-4" />;
+      case 'read for pickup':
+        return <Package className="w-4 h-4" />;
+      case 'ready to serve':
+        return <Package className="w-4 h-4" />;
+      case 'mark as ready':
         return <Package className="w-4 h-4" />;
       case 'out for delivery':
         return <Truck className="w-4 h-4" />;
@@ -177,11 +190,50 @@ export default function AdminOrdersPage() {
     }
   };
 
-  // Filtering ------------------------------------------------------------------------------------
-  const filteredOrders =
-    filter === 'all'
-      ? orders
-      : orders.filter((order) => order?.orderStatus?.toLowerCase() === filter);
+  // Date Filtering Helper ----------------------------------------------------------------------------
+  const isOrderInDateRange = (orderDate: string) => {
+    const order = new Date(orderDate);
+    const now = new Date();
+    
+    // Reset time to start of day for accurate comparison
+    order.setHours(0, 0, 0, 0);
+    now.setHours(0, 0, 0, 0);
+    
+    if (dateFilter === 'today') {
+      return order.getTime() === now.getTime();
+    } else if (dateFilter === 'this week') {
+      // Get start of current week (Sunday)
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      startOfWeek.setHours(0, 0, 0, 0);
+      
+      // Get end of current week (Saturday)
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+      
+      return order >= startOfWeek && order <= endOfWeek;
+    } else if (dateFilter === 'this month') {
+      return (
+        order.getMonth() === now.getMonth() &&
+        order.getFullYear() === now.getFullYear()
+      );
+    }
+    
+    return true; // Default: show all
+  };
+
+  // Filtering (Status + Date) -----------------------------------------------------------------------
+  const filteredOrders = orders.filter((order) => {
+    // Filter by status
+    const matchesStatus =
+      filter === 'all' || order?.orderStatus?.toLowerCase() === filter;
+    
+    // Filter by date range
+    const matchesDate = isOrderInDateRange(order?.createdAt ?? '');
+    
+    return matchesStatus && matchesDate;
+  });
 
   // Loading UI -----------------------------------------------------------------------------------
   if (status === 'loading' || loading) {
@@ -213,12 +265,14 @@ export default function AdminOrdersPage() {
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         {/* Filters */}
         <div className="bg-white rounded-xl shadow-md p-4 mb-6">
-          <div className="flex flex-wrap gap-2">
+          {/* Status Filter Buttons */}
+          <div className="flex flex-wrap gap-2 mb-4">
             {[
               'all',
               'pending',
               'confirmed',
               'preparing',
+              'mark as ready',
               'out for delivery',
               'completed',
               'cancelled'
@@ -238,6 +292,22 @@ export default function AdminOrdersPage() {
               </button>
             ))}
           </div>
+
+          {/* Date Filter Dropdown */}
+          <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+            <label className="text-sm font-semibold text-gray-700">
+              Date Range:
+            </label>
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="px-4 py-2 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+            >
+              <option value="today">Today</option>
+              <option value="this week">This Week</option>
+              <option value="this month">This Month</option>
+            </select>
+          </div>
         </div>
 
         {/* Orders List */}
@@ -245,175 +315,224 @@ export default function AdminOrdersPage() {
           {filteredOrders.length === 0 ? (
             <div className="bg-white rounded-xl shadow-md p-8 text-center">
               <ShoppingBag className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-              <p className="text-gray-600">
-                {filter === 'all' ? 'No orders yet' : `No ${filter} orders`}
+              <p className="text-gray-600 font-medium">
+                {filter === 'all' && dateFilter === 'today'
+                  ? 'No orders today'
+                  : filter === 'all'
+                  ? `No orders for ${dateFilter}`
+                  : `No ${filter} orders for ${dateFilter}`}
+              </p>
+              <p className="text-gray-500 text-sm mt-2">
+                Try adjusting your filters to see more results
               </p>
             </div>
           ) : (
-            filteredOrders.map((order) => (
-              <div key={order?.id} className="bg-white rounded-xl shadow-md p-6">
-                <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
-                  {/* Left Info Block */}
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3 mb-2">
-                      <h3 className="text-xl font-bold text-gray-900">
-                        {order?.orderNumber}
-                      </h3>
+            <>
+              {/* ===================== */}
+              {/* 🖥️ TABLE VIEW (SM+) */}
+              {/* ===================== */}
+              <div className="hidden sm:block overflow-x-auto bg-white rounded-xl shadow-md">
+                <table className="min-w-full border-collapse">
+                  <thead className="bg-amber-50 border-b">
+                    <tr className="text-left text-sm font-semibold text-gray-700">
+                      <th className="px-4 py-3">Order</th>
+                      <th className="px-4 py-3">Customer</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Payment</th>
+                      <th className="px-4 py-3">Total</th>
+                      <th className="px-4 py-3">Actions</th>
+                    </tr>
+                  </thead>
 
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {/* Order Status */}
+                  <tbody className="divide-y">
+                    {filteredOrders.map((order) => (
+                      <tr key={order.id} className="hover:bg-gray-50 transition">
+                        <td className="px-4 py-4">
+                          <p className="font-bold">{order.orderNumber}</p>
+                          <p className="text-xs text-gray-500">
+                            {new Date(order.createdAt).toLocaleString()}
+                          </p>
+                        </td>
+
+                        <td className="px-4 py-4 text-sm">
+                          <p className="font-medium">{order.customerName}</p>
+                          <p className="text-xs">{order.customerEmail}</p>
+                          <p className="text-xs">{order.customerPhone}</p>
+                          <p className="text-xs truncate max-w-[220px]">
+                            {order.deliveryAddress}
+                          </p>
+                        </td>
+
+                        <td className="px-4 py-4 space-y-2">
                         <span
-                          className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor(
-                            order?.orderStatus ?? ''
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium capitalize ${getStatusColor(
+                            order.orderStatus ?? ''
                           )}`}
                         >
-                          {getStatusIcon(order?.orderStatus ?? '')}
-                          <span>{order?.orderStatus}</span>
+                          {getStatusIcon(order.orderStatus ?? '')}
+                          {order.orderStatus}
                         </span>
 
-                        {/* Payment Status */}
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getPaymentStatusColor(
-                            order?.paymentStatus ?? ''
-                          )}`}
-                        >
-                          {order?.paymentStatus}
-                        </span>
+                        {order.orderSource === "KIOSK" ? (
+                          <select
+                            value={order.orderStatus}
+                            onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                            className="w-full px-2 py-1 border rounded-lg text-xs focus:ring-2 focus:ring-amber-500"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="preparing">Preparing</option>
+                            <option value="mark as ready">Mark as Ready</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        ) : (
+                          <select
+                            value={order.orderStatus}
+                            onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+                            className="w-full px-2 py-1 border rounded-lg text-xs focus:ring-2 focus:ring-amber-500"
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="preparing">Preparing</option>
+                            <option value="mark as ready">Mark as Ready</option>
+                            <option value="out for delivery">Out for Delivery</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        )}
+                      </td>
 
-                        {/* Payment Method */}
-                        <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium capitalize ${getPaymentMethodColor(
-                            order?.paymentMethod ?? ''
-                          )}`}
-                        >
-                          {order?.paymentMethod}
-                        </span>
-                      </div>
-                    </div>
+                        <td className="px-4 py-4 space-y-2">
+                          <span
+                            className={`inline-block px-2 py-1 rounded-full text-xs font-medium capitalize ${getPaymentStatusColor(
+                              order.paymentStatus ?? ''
+                            )}`}
+                          >
+                            {order.paymentStatus}
+                          </span>
 
-                    {/* Order Info List */}
-                    <div className="text-sm text-gray-600 space-y-1">
-                      <p>
-                        <span className="font-semibold">Customer:</span>{' '}
-                        {order?.customerName}
-                      </p>
-                      <p>
-                        <span className="font-semibold">Email:</span>{' '}
-                        {order?.customerEmail}
-                      </p>
-                      <p>
-                        <span className="font-semibold">Phone:</span>{' '}
-                        {order?.customerPhone}
-                      </p>
-                      <p>
-                        <span className="font-semibold">Address:</span>{' '}
-                        {order?.deliveryAddress}
-                      </p>
+                          <span
+                            className={`px-2 py-1 rounded-full text-xs ${getPaymentMethodColor(
+                              order.paymentMethod ?? ''
+                            )}`}
+                          >
+                            {order.paymentMethod}
+                          </span>
 
-                      {order?.orderNotes && (
-                        <div>
-                          <span className="font-semibold">Notes:</span>{" "}
-                          {order.orderNotes.length <= 30 ? (
-                            <span>{order.orderNotes}</span>
-                          ) : (
-                            <span>
-                              {order.orderNotes.slice(0, 30)}...
-                              <button
-                                onClick={() => {
-                                  setCurrentNotes(order.orderNotes || "");
-                                  setShowNotesModal(true);
-                                }}
-                                className="text-amber-600 underline ml-1 text-sm"
-                              >
-                                View All
-                              </button>
-                            </span>
-                          )}
-                        </div>
-                      )}
+                          <select
+                            value={order.paymentStatus ?? ''}
+                            onChange={(e) =>
+                              updatepaymentStatus(order.id, e.target.value)
+                            }
+                            className="w-full px-2 py-1 border rounded-lg text-xs focus:ring-2 focus:ring-amber-500"
+                          >
+                            <option value="unpaid">Unpaid</option>
+                            <option value="to verify">To verify</option>
+                            <option value="paid">Paid</option>
+                          </select>
+                        </td>
 
-                      <p className="text-xs text-gray-500">
-                        Ordered:{' '}
-                        {new Date(order?.createdAt ?? '').toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
+                        <td className="px-4 py-4 font-bold text-amber-600">
+                          ₱{order.total?.toFixed(2)}
+                        </td>
 
-                  {/* Right Status Update Column */}
-                  <div className="lg:text-right">
-                    <p className="text-2xl font-bold text-amber-600 mb-4">
-                      ₱{order?.total?.toFixed(2)}
-                    </p>
+                        <td className="px-4 py-4">
+                          <button
+                            onClick={() => {
+                              setSelectedItems(order.orderItems);
+                              setSelectedOrderNumber(order.orderNumber);
+                              setSelectedOrder(order);
 
-                    {/* Order Status Selector */}
-                    <label className="text-sm font-medium">Order Status:</label>
-                    <div className="space-y-2">
-                      <select
-                        value={order?.orderStatus}
-                        onChange={(e) =>
-                          updateOrderStatus(order?.id ?? '', e.target.value)
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm"
-                      >
-                        <option value="pending">Pending</option>
-                        <option value="confirmed">Confirmed</option>
-                        <option value="preparing">Preparing</option>
-                        <option value="out for delivery">
-                          Out for Delivery
-                        </option>
-                        <option value="completed">Completed</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
-                    </div>
-
-                    {/* Payment Status Selector */}
-                    <label className="text-sm font-medium mt-4 block">
-                      Payment Status:
-                    </label>
-                    <div className="space-y-2 mt-2">
-                      <select
-                        value={order?.paymentStatus ?? ''}
-                        onChange={(e) =>
-                          updatepaymentStatus(order?.id ?? '', e.target.value)
-                        }
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none text-sm"
-                      >
-                        <option value="unpaid">Unpaid</option>
-                        <option value="to verify">To verify</option>
-                        <option value="paid">Paid</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Order Items */}
-                <div className="border-t pt-4">
-                  <button
-                    onClick={() => {
-                      setSelectedItems(order.orderItems);
-                      setSelectedOrderNumber(order.orderNumber);
-
-                      // Save the whole order for printing
-                      setSelectedOrder(order);
-
-                      // Initialize item status
-                      const initialStatus: any = {};
-                      order.orderItems.forEach((item: any) => {
-                        initialStatus[item.id] = false;
-                      });
-                      setItemStatus(initialStatus);
-
-                      setItemsModalOpen(true);
-                    }}
-                    className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700 transition"
-                  >
-                    View Items
-                  </button>
-                </div>
+                              const initialStatus: any = {};
+                              order.orderItems.forEach((item: any) => {
+                                initialStatus[item.id] = false;
+                              });
+                              setItemStatus(initialStatus);
+                              setItemsModalOpen(true);
+                            }}
+                            className="px-3 py-2 bg-amber-600 text-white rounded-lg text-xs hover:bg-amber-700"
+                          >
+                            View Items
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))
+
+              {/* ===================== */}
+              {/* 📱 MOBILE VIEW (< SM) */}
+              {/* ===================== */}
+              <div className="sm:hidden space-y-4">
+                {filteredOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="bg-white rounded-xl shadow-md p-4 space-y-3"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-bold">{order.orderNumber}</p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(order.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <p className="font-bold text-amber-600">
+                        ₱{order.total?.toFixed(2)}
+                      </p>
+                    </div>
+
+                    <div className="text-sm">
+                      <p className="font-medium">{order.customerName}</p>
+                      <p className="text-xs">{order.customerPhone}</p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs ${getStatusColor(
+                          order.orderStatus ?? ''
+                        )}`}
+                      >
+                        {order.orderStatus}
+                      </span>
+
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs ${getPaymentStatusColor(
+                          order.paymentStatus ?? ''
+                        )}`}
+                      >
+                        {order.paymentStatus}
+                      </span>
+
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs ${getPaymentMethodColor(
+                          order.paymentMethod ?? ''
+                        )}`}
+                      >
+                        {order.paymentMethod}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSelectedItems(order.orderItems);
+                        setSelectedOrderNumber(order.orderNumber);
+                        setSelectedOrder(order);
+                        setItemsModalOpen(true);
+                      }}
+                      className="w-full px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700"
+                    >
+                      View Items
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
+
+
 
         {showNotesModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">

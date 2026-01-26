@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { writeFile } from 'fs/promises';
 import path from 'path';
 import fs from 'fs/promises';
-
-const prisma = new PrismaClient();
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +18,7 @@ export async function GET() {
 
     const products = await prisma.product.findMany({
       orderBy: { createdAt: 'desc' },
+      include: { variants: true }, // <-- include variants
     });
 
     return NextResponse.json(products);
@@ -32,77 +31,68 @@ export async function GET() {
   }
 }
 
-
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session?.user as any)?.role !== 'admin') {
+    const role = (session?.user as any)?.role;
+    if (!session || !['admin', 'store-manager'].includes(role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Parse FormData directly (don't use formidable for App Router)
     const formData = await req.formData();
     
-    // Get form values
     const name = formData.get('name') as string;
     const description = formData.get('description') as string;
     const recipe = formData.get('recipe') as string;
-    const priceStr = formData.get('price') as string;
     const category = formData.get('category') as string;
     const available = formData.get('available') as string;
+    const featured = formData.get('featured') as string;
     const imageFile = formData.get('image') as File | null;
+    const variantsStr = formData.get('variants') as string; // <-- new
 
-    if (!name || !description || !priceStr || !recipe) {
-      console.error('Missing required fields');
+    if (!name || !description || !recipe || !variantsStr) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
+
+    const variants = JSON.parse(variantsStr) as { label: string; price: string }[];
+    if (!variants.length) {
+      return NextResponse.json({ error: 'At least one variant is required' }, { status: 400 });
     }
 
     // --- Handle image file ---
     let imageUrl = '';
     if (imageFile && imageFile.size > 0) {
-      try {
-        const bytes = await imageFile.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        
-        // Create directory if it doesn't exist
-        const uploadDir = path.join(process.cwd(), 'public', 'product_images');
-        const fs = await import('fs/promises');
-        try {
-          await fs.access(uploadDir);
-        } catch {
-          await fs.mkdir(uploadDir, { recursive: true });
-        }
-        
-        // Create unique filename
-        const timestamp = Date.now();
-        const originalName = imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const fileName = `${timestamp}-${originalName}`;
-        const uploadPath = path.join(uploadDir, fileName);
-        
-        // Save file
-        await writeFile(uploadPath, new Uint8Array(buffer));
-        imageUrl = `/product_images/${fileName}`;
-        console.log('File saved at:', uploadPath);
-      } catch (error) {
-        console.error('Error saving image:', error);
-        return NextResponse.json({ error: 'Failed to save image' }, { status: 500 });
-      }
+      const bytes = await imageFile.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      const uploadDir = path.join(process.cwd(), 'public', 'product_images');
+      try { await fs.access(uploadDir); } catch { await fs.mkdir(uploadDir, { recursive: true }); }
+      const timestamp = Date.now();
+      const fileName = `${timestamp}-${imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const uploadPath = path.join(uploadDir, fileName);
+      await writeFile(uploadPath, new Uint8Array(buffer));
+      imageUrl = `/product_images/${fileName}`;
     }
 
-    // Create product in database
+    // Create product with variants
     const product = await prisma.product.create({
       data: {
         name,
         description,
         recipe,
-        price: parseFloat(priceStr),
         image: imageUrl,
         category,
         available: available !== 'false',
+        featured: featured === 'true',
+        variants: {
+          create: variants.map((v) => ({
+            label: v.label,
+            price: parseFloat(v.price),
+          })),
+        },
       },
+      include: { variants: true },
     });
 
-    console.log('Product created successfully:', product);
     return NextResponse.json(product, { status: 201 });
   } catch (error) {
     console.error('Error creating product:', error);
@@ -113,7 +103,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH is similar: parse form, update fields, upload new image if present
 export async function PATCH(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -122,80 +111,71 @@ export async function PATCH(req: NextRequest) {
     }
 
     const formData = await req.formData();
-    
     const id = formData.get('id') as string;
     const name = formData.get('name') as string;
     const description = formData.get('description') as string;
     const recipe = formData.get('recipe') as string;
-    const priceStr = formData.get('price') as string;
     const category = formData.get('category') as string;
     const available = formData.get('available') as string;
+    const featured = formData.get('featured') as string;
     const imageFile = formData.get('image') as File | null;
+    const variantsStr = formData.get('variants') as string;
 
-    if (!id || !name || !description || !priceStr || !recipe) {
+    if (!id || !name || !description || !recipe || !variantsStr) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Check if product exists
-    const existingProduct = await prisma.product.findUnique({
-      where: { id },
-    });
-
-    if (!existingProduct) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    const variants = JSON.parse(variantsStr) as { label: string; price: string }[];
+    if (!variants.length) {
+      return NextResponse.json({ error: 'At least one variant is required' }, { status: 400 });
     }
 
+    const existingProduct = await prisma.product.findUnique({
+      where: { id },
+      include: { variants: true },
+    });
+    if (!existingProduct) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+
     let imageUrl = existingProduct.image;
-    
-    // Handle new image upload if provided
     if (imageFile && imageFile.size > 0) {
-      try {
-        const bytes = await imageFile.arrayBuffer();
-        const buffer = Buffer.from(bytes);
-        
-        const uploadDir = path.join(process.cwd(), 'public', 'product_images');
-        const fs = await import('fs/promises');
-        
-        try {
-          await fs.access(uploadDir);
-        } catch {
-          await fs.mkdir(uploadDir, { recursive: true });
-        }
-        
-        const timestamp = Date.now();
-        const originalName = imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_');
-        const fileName = `${timestamp}-${originalName}`;
-        const uploadPath = path.join(uploadDir, fileName);
-        
-        await writeFile(uploadPath, new Uint8Array(buffer));
-        imageUrl = `/product_images/${fileName}`;
-        
-        // Optional: Delete old image file
-        if (existingProduct.image) {
-          const oldImagePath = path.join(process.cwd(), 'public', existingProduct.image);
-          try {
-            await fs.unlink(oldImagePath);
-          } catch (error) {
-            console.error('Error deleting old image:', error);
-          }
-        }
-      } catch (error) {
-        console.error('Error saving image:', error);
+      const bytes = await imageFile.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      const uploadDir = path.join(process.cwd(), 'public', 'product_images');
+      try { await fs.access(uploadDir); } catch { await fs.mkdir(uploadDir, { recursive: true }); }
+      const timestamp = Date.now();
+      const fileName = `${timestamp}-${imageFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+      const uploadPath = path.join(uploadDir, fileName);
+      await writeFile(uploadPath, new Uint8Array(buffer));
+      imageUrl = `/product_images/${fileName}`;
+
+      // Delete old image
+      if (existingProduct.image) {
+        const oldImagePath = path.join(process.cwd(), 'public', existingProduct.image.replace(/^\//, ''));
+        try { await fs.unlink(oldImagePath); } catch {}
       }
     }
 
-    // Update product
+    // Delete old variants & recreate
+    await prisma.productVariant.deleteMany({ where: { productId: id } });
+
     const updatedProduct = await prisma.product.update({
       where: { id },
       data: {
         name,
         description,
         recipe,
-        price: parseFloat(priceStr),
-        image: imageUrl,
         category,
         available: available !== 'false',
+        featured: featured === 'true',
+        image: imageUrl,
+        variants: {
+          create: variants.map((v) => ({
+            label: v.label,
+            price: parseFloat(v.price),
+          })),
+        },
       },
+      include: { variants: true },
     });
 
     return NextResponse.json(updatedProduct);
@@ -211,85 +191,27 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session || (session?.user as any)?.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    if (!id) return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
 
-    if (!id) {
-      return NextResponse.json(
-        { error: 'Product ID is required' },
-        { status: 400 }
-      );
+    const product = await prisma.product.findUnique({ where: { id } });
+    if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+
+    if (product.image) {
+      const fullPath = path.join(process.cwd(), 'public', product.image.replace(/^\//, ''));
+      try { await fs.unlink(fullPath); } catch {}
     }
 
-    // First, fetch the product to get the image path
-    const product = await prisma.product.findUnique({
-      where: { id },
-    });
+    await prisma.product.delete({ where: { id } });
 
-    if (!product) {
-      return NextResponse.json(
-        { error: 'Product not found' },
-        { status: 404 }
-      );
-    }
-
-    // Delete the image file if it exists
-    if (product.image && product.image.trim() !== '') {
-      try {
-        // Remove leading slash if present to create proper path
-        const cleanImagePath = product.image.startsWith('/') 
-          ? product.image.substring(1) 
-          : product.image;
-        
-        const fullImagePath = path.join(process.cwd(), 'public', cleanImagePath);
-        
-        // Check if file exists before deleting
-        try {
-          await fs.access(fullImagePath);
-          await fs.unlink(fullImagePath);
-          console.log(`✅ Image deleted: ${fullImagePath}`);
-        } catch (fsError: any) {
-          if (fsError.code === 'ENOENT') {
-            console.warn(`⚠️ Image file not found: ${fullImagePath}`);
-          } else {
-            console.warn(`⚠️ Could not delete image file: ${fullImagePath}`, fsError);
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error during image deletion process:', error);
-        // Don't throw - continue with product deletion
-      }
-    }
-
-    // Delete the product from database
-    await prisma.product.delete({
-      where: { id },
-    });
-
-    console.log(`✅ Product deleted: ${product.name} (${id})`);
-    return NextResponse.json({ 
-      message: 'Product deleted successfully',
-      deletedProduct: product.name 
-    });
+    return NextResponse.json({ message: 'Product deleted successfully', deletedProduct: product.name });
   } catch (error: any) {
-    console.error('❌ Error deleting product:', error);
-    
-    // Handle Prisma specific errors
-    if (error.code === 'P2025') {
-      return NextResponse.json(
-        { error: 'Product not found or already deleted' },
-        { status: 404 }
-      );
-    }
-    
-    return NextResponse.json(
-      { error: error.message || 'Failed to delete product' },
-      { status: 500 }
-    );
+    console.error('Error deleting product:', error);
+    return NextResponse.json({ error: error.message || 'Failed to delete product' }, { status: 500 });
   }
 }

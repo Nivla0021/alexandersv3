@@ -1,10 +1,9 @@
 export const runtime = 'nodejs';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { sendOrderConfirmationEmail } from '@/lib/email';
 
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
 const WEBHOOK_SECRET = process.env.PAYMONGO_WEBHOOK_SECRET;
 
 export async function POST(req: NextRequest) {
@@ -97,7 +96,9 @@ export async function POST(req: NextRequest) {
       // Send order confirmation email
       const emailItems = orderWithItems.orderItems.map((item: any) => ({
         id: item.product.id,
-        name: item.product.name,
+        name: item.variantLabel
+          ? `${item.product.name} (${item.variantLabel})`
+          : item.product.name,
         price: item.price,
         quantity: item.quantity,
       }));

@@ -211,13 +211,18 @@ export default function CheckoutPage() {
                   </label>
                   <input
                     type="text"
+                    readOnly={true}
                     required
                     value={formData.customerName}
                     onChange={(e) => setFormData({ ...formData, customerName: e.target.value })}
                     className="w-full px-4 py-3 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500"
                     placeholder="Juan Dela Cruz"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    You can update your name in your profile settings.
+                  </p>
                 </div>
+                
 
                 {/* Email */}
                 <div>
@@ -227,6 +232,7 @@ export default function CheckoutPage() {
                   </label>
                   <input
                     type="email"
+                    readOnly={true}
                     required
                     value={formData.customerEmail}
                     onChange={(e) => setFormData({ ...formData, customerEmail: e.target.value })}
@@ -243,12 +249,16 @@ export default function CheckoutPage() {
                   </label>
                   <input
                     type="tel"
+                    readOnly={true}
                     required
                     value={formData.customerPhone}
                     onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
                     className="w-full px-4 py-3 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500"
                     placeholder="09XX XXX XXXX"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    You can update your phone number in your profile settings.
+                  </p>
                 </div>
 
                 {/* Address */}
@@ -259,11 +269,15 @@ export default function CheckoutPage() {
                   </label>
                   <textarea
                     required
+                    readOnly={true}
                     value={formData.deliveryAddress}
                     onChange={(e) => setFormData({ ...formData, deliveryAddress: e.target.value })}
                     rows={3}
                     className="w-full px-4 py-3 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 resize-none"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    You can update your address in your profile settings.
+                  </p>
                 </div>
 
                 {/* Notes */}
@@ -336,11 +350,27 @@ export default function CheckoutPage() {
 
                 <div className="space-y-3 mb-6">
                   {items.map((item) => (
-                    <div key={item.id} className="flex justify-between text-sm">
-                      <span>{item.name} x {item.quantity}</span>
-                      <span className="font-semibold">₱{(item.price * item.quantity).toFixed(2)}</span>
+                  <div
+                    key={item.id + (item.variantId || '')}
+                    className="flex justify-between text-sm"
+                  >
+                    <div>
+                      <p className="font-medium">
+                        {item.name} × {item.quantity}
+                      </p>
+
+                      {item.variantLabel && (
+                        <p className="text-xs text-gray-500">
+                          Variant: {item.variantLabel}
+                        </p>
+                      )}
                     </div>
-                  ))}
+
+                    <span className="font-semibold">
+                      ₱{(item.price * item.quantity).toFixed(2)}
+                    </span>
+                  </div>
+                ))}
                 </div>
 
                 <div className="border-t pt-3 flex justify-between text-xl font-bold">

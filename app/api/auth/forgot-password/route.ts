@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import nodemailer from 'nodemailer';
+import { checkSignupRateLimit } from '@/lib/rate-limit';
 
 const prisma = new PrismaClient();
 
@@ -23,25 +24,64 @@ export async function POST(request: NextRequest) {
     const { email } = await request.json();
 
     if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Email is required' },
+        { status: 400 }
+      );
     }
 
-    // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // -----------------------------
+    // RATE LIMITING (FORGOT PASSWORD)
+    // -----------------------------
+    const rateLimitKey = `forgot-password:${normalizedEmail}`;
+    const { success, remaining, reset } =
+      await checkSignupRateLimit(rateLimitKey);
+
+    console.log('FORGOT PASSWORD RATE LIMIT', {
+      email: normalizedEmail,
+      success,
+      remaining,
+      reset,
     });
 
-    if (!user) {
-      return NextResponse.json({ error: 'No account found with this email' }, { status: 404 });
+    if (!success) {
+      return NextResponse.json(
+        {
+          error:
+            'Too many password reset requests. Please wait a few minutes before trying again.',
+        },
+        { status: 429 }
+      );
     }
 
-    // Generate 6-digit token
-    const token = generateSixDigitToken();
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+    // -----------------------------
+    // USER LOOKUP
+    // -----------------------------
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
-    // Save token to database
+    // ❗ Important security choice:
+    // You can either:
+    // A) return 404 (what you currently do)
+    // B) return generic success to avoid email enumeration
+    if (!user) {
+      return NextResponse.json(
+        { error: 'No account found with this email' },
+        { status: 404 }
+      );
+    }
+
+    // -----------------------------
+    // TOKEN GENERATION
+    // -----------------------------
+    const token = generateSixDigitToken();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
     await prisma.user.update({
-      where: { email: email.trim().toLowerCase() },
+      where: { email: normalizedEmail },
       data: {
         passwordResetToken: token,
         passwordResetExpires: expiresAt,
@@ -138,11 +178,14 @@ export async function POST(request: NextRequest) {
       </html>
     `;
 
+    // -----------------------------
+    // SEND EMAIL
+    // -----------------------------
     await transporter.sendMail({
       from: `"Alexander's Handcrafted Cuisine" <${process.env.SMTP_USER}>`,
-      to: email,
+      to: normalizedEmail,
       subject: 'Password Reset Verification Code',
-      html: emailHtml,
+      html:emailHtml,
     });
 
     return NextResponse.json({

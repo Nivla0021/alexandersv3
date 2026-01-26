@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +10,9 @@ export async function GET(req: Request) {
 
     const products = await prisma.product.findMany({
       orderBy: { createdAt: "desc" },
-      where: {
-        ...(category && category !== "all"
-          ? { category }
-          : {}), // only filter if a category is supplied
+      where: category && category !== "all" ? { category } : {},
+      include: {
+        variants: true, // Include all variants
       },
     });
 

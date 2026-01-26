@@ -3,15 +3,15 @@ import { Facebook, Instagram, Mail, Phone } from 'lucide-react';
 
 export function Footer() {
   return (
-    <footer className="bg-amber-950 text-amber-50">
+    <footer className="bg-[#436B48] text-white">
       <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* About */}
           <div>
-            <h3 className="text-lg font-bold mb-4 text-amber-200">
+            <h3 className="text-lg font-bold mb-4 text-[#FFD966]">
               Alexander's Handcrafted Cuisine
             </h3>
-            <p className="text-sm text-amber-100 leading-relaxed">
+            <p className="text-sm leading-relaxed">
               Authentic Filipino snacks and dishes made with love and tradition.
               Serving Metro Manila with homemade quality.
             </p>
@@ -19,12 +19,12 @@ export function Footer() {
 
           {/* Quick Links */}
           <div>
-            <h3 className="text-lg font-bold mb-4 text-amber-200">Quick Links</h3>
+            <h3 className="text-lg font-bold mb-4 text-[#FFD966]">Quick Links</h3>
             <ul className="space-y-2 text-sm">
               <li>
                 <Link
                   href="/menu"
-                  className="text-amber-100 hover:text-amber-300 transition-colors"
+                  className="hover:text-amber-300 transition-colors"
                 >
                   Menu
                 </Link>
@@ -32,7 +32,7 @@ export function Footer() {
               <li>
                 <Link
                   href="/about"
-                  className="text-amber-100 hover:text-amber-300 transition-colors"
+                  className="hover:text-amber-300 transition-colors"
                 >
                   About Us
                 </Link>
@@ -40,7 +40,7 @@ export function Footer() {
               <li>
                 <Link
                   href="/contact"
-                  className="text-amber-100 hover:text-amber-300 transition-colors"
+                  className="hover:text-amber-300 transition-colors"
                 >
                   Contact
                 </Link>
@@ -49,9 +49,9 @@ export function Footer() {
           </div>
 
           {/* Contact */}
-          <div>
-            <h3 className="text-lg font-bold mb-4 text-amber-200">Contact Us</h3>
-            <ul className="space-y-3 text-sm text-amber-100">
+          <div className='text-white'>
+            <h3 className="text-lg font-bold mb-4 text-[#FFD966]">Contact Us</h3>
+            <ul className="space-y-3 text-sm">
               <li className="flex items-center space-x-2">
                 <Mail className="w-4 h-4" />
                 <span>sales@avasiaonline.com</span>
@@ -61,16 +61,16 @@ export function Footer() {
                 <span>Metro Manila Only</span>
               </li>
             </ul>
-            <div className="flex space-x-3 mt-4">
+            <div className="flex text-[#333333] space-x-3 mt-4">
               <a
                 href="#"
-                className="p-2 bg-amber-900 rounded-lg hover:bg-amber-800 transition-colors"
+                className="p-2 bg-[#FFD966] rounded-full hover:bg-[#DDB94F] transition-colors"
               >
                 <Facebook className="w-5 h-5" />
               </a>
               <a
                 href="#"
-                className="p-2 bg-amber-900 rounded-lg hover:bg-amber-800 transition-colors"
+                className="p-2 bg-[#FFD966] rounded-full hover:bg-[#DDB94F] transition-colors"
               >
                 <Instagram className="w-5 h-5" />
               </a>
@@ -78,7 +78,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-8 pt-8 border-t border-amber-900 text-center text-sm text-amber-200">
+        <div className="mt-8 pt-8 border-t border-[#A0B0A2] text-center text-sm ">
           <p>&copy; {new Date().getFullYear()} Alexander's Handcrafted Cuisine. All rights reserved.</p>
         </div>
       </div>

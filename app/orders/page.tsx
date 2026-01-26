@@ -13,11 +13,11 @@ import Image from 'next/image';
 interface OrderItem {
   id: string;
   quantity: number;
-  price: number;
+  price: number;              // ✅ snapshot price
+  variantLabel?: string | null;
   product: {
     name: string;
     image: string;
-    price: number;
   };
 }
 
@@ -157,13 +157,6 @@ export default function OrdersPage() {
       <Header />
       <main className="flex-1 bg-gradient-to-br from-amber-50 to-orange-50 py-12">
         <div className="container mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/"
-            className="inline-flex items-center text-amber-700 hover:text-amber-900 mb-6"
-          >
-            <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Home
-          </Link>
 
           <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
             <div className="bg-gradient-to-r from-amber-600 to-orange-600 px-8 py-6">
@@ -225,6 +218,7 @@ export default function OrdersPage() {
                       </div>
 
                       {/* Order Items Preview */}
+                      {/* Order Items Preview (show variant if available) */}
                       <div className="mb-4">
                         <p className="text-sm text-gray-600 mb-2">
                           {order.orderItems.length} item(s)
@@ -237,6 +231,7 @@ export default function OrdersPage() {
                             >
                               <span className="text-xs font-medium text-amber-900">
                                 {item.quantity}x {item.product.name}
+                                {item.variantLabel ? ` (${item.variantLabel})` : ''}
                               </span>
                             </div>
                           ))}
@@ -374,6 +369,11 @@ export default function OrdersPage() {
                         <h4 className="font-semibold text-gray-900">
                           {item.product.name}
                         </h4>
+                        {item.variantLabel && (
+                          <p className="text-xs text-gray-500">
+                            Variant: {item.variantLabel}
+                          </p>
+                        )}
                         <p className="text-sm text-gray-600">
                           Quantity: {item.quantity}
                         </p>

@@ -2,10 +2,12 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { ShoppingCart, Menu as MenuIcon, X, User, LogOut, LogIn, Package } from 'lucide-react';
+import { ShoppingCart, Menu as MenuIcon, X, User, LogOut, LogIn, Package, CalendarCheck } from 'lucide-react';
 import { useCartStore } from '@/lib/cart-store';
 import { useState, useEffect } from 'react';
 import { useSession, signOut } from 'next-auth/react';
+
+
 
 export function Header() {
   const [mounted, setMounted] = useState(false);
@@ -35,27 +37,32 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-sm border-b border-amber-100 shadow-sm">
+    <header className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-lg shadow-sm">
       <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between lg:h-16 py-2">
           {/* Logo */}
           <Link href="/" className="flex items-center space-x-3">
-            <div className="relative w-12 h-12">
+            {/* <div className="relative w-12 h-12">
               <Image
                 src="/logo.png"
                 alt="Alexander's Handcrafted Cuisine Logo"
                 fill
                 className="object-contain"
               />
-            </div>
-            <div className="hidden sm:block">
-              <span className="text-xl font-bold text-amber-900">
+            </div> */}
+            <div className=" flex flex-col gap-2">
+              <img src="/logov2.png" alt="" className='w-full h-12 lg:h-14' />
+              {/* <p className="logo-font text-[50px] font-[600] tracking-[2px] mt-[-6px] bg-gradient-to-b from-[#6B7F3A] via-[#4F6430] to-[#2F3E1E] bg-clip-text text-transparent leading-none">Alexander's</p>
+              <p className="text-[10px] text-[#5D5552] mt-[-15px] ml-[42px] leading-none">Handcrafted Cuisine</p> */}
+
+              {/* <img src="/logov2.png" className='w-[20%]' /> */}
+              {/* <span className="text-xl font-bold text-amber-900">
                 Alexander's
               </span>
               <br />
               <span className="text-xs text-amber-700">
                 Handcrafted Cuisine
-              </span>
+              </span> */}
             </div>
           </Link>
 
@@ -65,7 +72,7 @@ export function Header() {
               <Link
                 key={link.href}
                 href={link.href}
-                className="px-4 py-2 rounded-lg text-sm font-medium text-amber-900 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-black-900 hover:bg-amber-50 hover:text-amber-700 transition-colors"
               >
                 {link.label}
               </Link>
@@ -121,6 +128,15 @@ export function Header() {
                             <Package className="w-4 h-4" />
                             <span>My Orders</span>
                           </Link>
+                          {/*  added reservations link */}
+                          <Link
+                            href="/reservations"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="w-full text-left px-4 py-2 text-sm text-amber-900 hover:bg-amber-50 flex items-center space-x-2"
+                          >
+                            <CalendarCheck className="w-4 h-4" />
+                            <span>Reservations</span>
+                          </Link>
                           <button
                             onClick={() => {
                               signOut({
@@ -152,7 +168,7 @@ export function Header() {
             {/* Cart */}
             <Link
               href="/cart"
-              className="relative p-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors"
+              className="relative p-2 rounded-lg bg-[#436B48] text-white hover:bg-amber-700 transition-colors"
             >
               <ShoppingCart className="w-5 h-5" />
 

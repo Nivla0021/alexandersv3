@@ -1,13 +1,12 @@
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from "@/lib/prisma";
 import { CheckCircle, Clock, MapPin, Mail, Phone } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import CopyOrderNumber from './CopyOrderNumber';
 import { toast } from "sonner";
 
-const prisma = new PrismaClient();
 
 export const dynamic = 'force-dynamic';
 
@@ -24,17 +23,19 @@ async function getOrder(orderNumber: string) {
       include: {
         orderItems: {
           include: {
-            product: true,
+            product: true, // only relations go here
           },
         },
       },
     });
+
     return order;
   } catch (error) {
     console.error('Error fetching order:', error);
     return null;
   }
 }
+
 
 export default async function OrderConfirmationPage({ params }: PageProps) {
   const order = await getOrder(params.orderNumber);
@@ -137,6 +138,12 @@ export default async function OrderConfirmationPage({ params }: PageProps) {
                       <p className="font-semibold text-gray-800">
                         {item?.product?.name}
                       </p>
+
+                      {item?.variantLabel && (
+                        <p className="text-xs text-gray-500">
+                          {item.variantLabel}
+                        </p>
+                      )}
                       <p className="text-sm text-gray-600">
                         Quantity: {item?.quantity}
                       </p>

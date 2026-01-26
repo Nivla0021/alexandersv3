@@ -3,7 +3,25 @@ import { Footer } from '@/components/footer';
 import { Truck, Clock, CreditCard, MapPin, HelpCircle } from 'lucide-react';
 import Image from 'next/image';
 
-export default function DeliveryInfoPage() {
+  export default async function DeliveryInfoPage() {
+    async function getFaqs() {
+    try {
+      const host =
+        process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+
+      const res = await fetch(
+        `${host}/api/admin/faq`,
+        { cache: 'no-store' }
+      );
+      if (!res.ok) throw new Error('Failed to fetch faqs');
+      return await res.json();
+    } catch (error) {
+      console.error('Error fetching faqs:', error);
+      return [];
+    }
+  }   
+
+  const faqs = await getFaqs();
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -253,46 +271,24 @@ export default function DeliveryInfoPage() {
               </h2>
             </div>
 
-            <div className="space-y-6">
-              <div className="bg-amber-50 rounded-xl p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-amber-900 mb-2">
-                  What is your minimum order amount?
-                </h3>
-                <p className="text-gray-700">
-                  There is no minimum order amount. Order as little or as much as
-                  you'd like!
+            <div className="space-y-6 max-h-[600px] overflow-y-auto pr-2">
+              {faqs.length > 0 ? (
+                faqs.map((faq: { id: string; question: string; answer: string }) => (
+                  <div
+                    key={faq.id}
+                    className="bg-amber-50 rounded-xl p-6 shadow-sm"
+                  >
+                    <h3 className="text-lg font-bold text-amber-900 mb-2">
+                      {faq.question}
+                    </h3>
+                    <p className="text-gray-700 whitespace-pre-line">{faq.answer}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-gray-500">
+                  No FAQs available at the moment.
                 </p>
-              </div>
-
-              <div className="bg-amber-50 rounded-xl p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-amber-900 mb-2">
-                  Do you deliver outside Metro Manila?
-                </h3>
-                <p className="text-gray-700">
-                  Currently, we only deliver within Metro Manila. We're working on
-                  expanding our coverage soon!
-                </p>
-              </div>
-
-              <div className="bg-amber-50 rounded-xl p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-amber-900 mb-2">
-                  Can I schedule my delivery for a specific time?
-                </h3>
-                <p className="text-gray-700">
-                  Yes! Please mention your preferred delivery time in the order
-                  notes, and we'll do our best to accommodate.
-                </p>
-              </div>
-
-              <div className="bg-amber-50 rounded-xl p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-amber-900 mb-2">
-                  What if I have dietary restrictions or allergies?
-                </h3>
-                <p className="text-gray-700">
-                  Please mention any dietary restrictions or allergies in the order
-                  notes, and we'll accommodate your needs.
-                </p>
-              </div>
+              )}
             </div>
           </div>
         </section>

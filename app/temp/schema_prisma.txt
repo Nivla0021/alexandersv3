@@ -1,0 +1,188 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id String @id @default(cuid())
+
+  // Identity
+  name          String    @db.VarChar(100)
+  email         String    @unique @db.VarChar(254)
+  emailVerified DateTime?
+  image         String?
+
+  // Auth
+  password String @db.VarChar(255)
+  role     String @default("customer") @db.VarChar(20)
+
+  // Verification / recovery
+  emailVerificationToken   String?   @unique @db.VarChar(64)
+  emailVerificationExpires DateTime?
+  passwordResetToken       String?   @unique @db.VarChar(64)
+  passwordResetExpires     DateTime?
+
+  // Contact
+  phone   String? @db.VarChar(20)
+  address String? @db.VarChar(500)
+
+  // Timestamps
+  createdAt  DateTime @default(now())
+  modifiedAt DateTime @updatedAt
+
+  // Relations
+  accounts Account[]
+  sessions Session[]
+  orders   Order[]
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  description String        @db.Text
+  recipe      String?       @db.Text
+  price       Float
+  image       String
+  category    String?
+  available   Boolean       @default(true)
+  featured    Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  orderItems  OrderItem[]
+  sales       ProductSale[]
+}
+
+model SliderImage {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  image       String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model Order {
+  id          String @id @default(cuid())
+  orderNumber String @unique
+  transactionNumber String? @unique
+
+  orderSource String @default("ONLINE") // ONLINE | KIOSK
+  orderMode   String?                  // DINE-IN | TAKEOUT | null
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  customerName    String?
+  customerEmail   String?
+  customerPhone   String?
+  deliveryAddress String? @db.Text
+  orderNotes      String? @db.Text
+
+  subtotal Float
+  total    Float
+
+  orderStatus   String @default("pending")
+  paymentStatus String @default("unpaid")
+  paymentMethod String @default("COD")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orderItems   OrderItem[]
+  productSales ProductSale[]
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Float
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+}
+
+model ProductSale {
+  id        String @id @default(cuid())
+  productId String
+  orderId   String
+
+  productName String
+  category    String?
+  unitPrice   Float
+  quantity    Int
+  total       Float
+  soldAt      DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, productId]) // 🔒 prevents duplicates
+  @@index([soldAt])
+}
+
+model ContactSubmission {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  message   String   @db.Text
+  status    String   @default("new")
+  createdAt DateTime @default(now())
+}
+
+model Testimonial {
+  id           String   @id @default(cuid())
+  customerName String
+  message      String   @db.VarChar(500) // max 500 characters
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model FAQ {
+  id        Int      @id @default(autoincrement())
+  question  String   @db.Text
+  answer    String   @db.Text
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+

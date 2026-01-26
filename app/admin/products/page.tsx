@@ -7,16 +7,26 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { ArrowLeft, Plus, Edit, Trash2, Package } from 'lucide-react';
 import { useRef } from 'react';
+import { Editor } from "@tinymce/tinymce-react";
+
+
+interface ProductVariant {
+  id: string;
+  label: string;
+  price: number;
+}
 
 interface Product {
   id: string;
   name: string;
   description: string;
   recipe?: string | null;
-  price: number;
   image: string;
   category: string | null;
   available: boolean;
+  featured: boolean;
+
+  variants: ProductVariant[];
 }
 
 export default function AdminProductsPage() {
@@ -31,10 +41,11 @@ export default function AdminProductsPage() {
     name: '',
     description: '',
     recipe: '',
-    price: '',
     image: '',
     category: '',
     available: true,
+    featured: false,
+    variants: [{ label: 'Regular', price: '' }],
   });
 
   // Search state
@@ -76,8 +87,20 @@ export default function AdminProductsPage() {
   const fetchProducts = async () => {
     try {
       const response = await fetch('/api/admin/products');
+      if (!response.ok) throw new Error('Failed to fetch products');
+
       const data = await response.json();
-      setProducts(data ?? []);
+
+      // Map variants to ensure price is string for the form
+      const productsWithVariants = (data ?? []).map((product: any) => ({
+        ...product,
+        variants: product.variants?.map((v: any) => ({
+          ...v,
+          price: v.price.toString(), // convert to string for input fields
+        })) ?? [{ label: 'Regular', price: '' }], // default if empty
+      }));
+
+      setProducts(productsWithVariants);
     } catch (error) {
       console.error('Error fetching products:', error);
     } finally {
@@ -94,9 +117,10 @@ export default function AdminProductsPage() {
       formPayload.append('name', formData.name);
       formPayload.append('description', formData.description);
       formPayload.append('recipe', formData.recipe || '');
-      formPayload.append('price', formData.price);
       formPayload.append('category', formData.category || '');
       formPayload.append('available', formData.available ? 'true' : 'false');
+      formPayload.append('featured', formData.featured ? 'true' : 'false');
+      formPayload.append('variants', JSON.stringify(formData.variants));
 
       // If image is a File, append it; if it's a string (editing), skip
       if (formData.image && typeof formData.image !== 'string') {
@@ -116,10 +140,11 @@ export default function AdminProductsPage() {
           name: '',
           description: '',
           recipe: '',
-          price: '',
           image: '',
           category: '',
           available: true,
+          featured: false,
+          variants: [{ label: 'Regular', price: '' }],
         });
       } else {
         const data = await response.json();
@@ -136,19 +161,23 @@ export default function AdminProductsPage() {
       name: product.name,
       description: product.description,
       recipe: product.recipe || '',
-      price: product.price.toString(),
-      image: product.image, // keep URL string for existing image
+      image: product.image,
       category: product.category || '',
       available: product.available,
+      featured: product.featured,
+      variants: product.variants.map((v) => ({
+        label: v.label,
+        price: v.price.toString(),
+      })),
     });
     setShowForm(true);
 
     setTimeout(() => {
-    formRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-  }, 0);
+      formRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 0);
   };
 
   const handleDelete = async (id: string) => {
@@ -183,6 +212,22 @@ export default function AdminProductsPage() {
       await fetchProducts();
     } catch (error) {
       console.error('Error toggling availability:', error);
+    }
+  };
+
+  const toggleFeatured = async (product: Product) => {
+    try {
+      await fetch('/api/admin/products', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: product.id,
+          featured: !product.featured,
+        }),
+      });
+      await fetchProducts();
+    } catch (error) {
+      console.error('Error toggling featured status:', error);
     }
   };
 
@@ -225,10 +270,11 @@ export default function AdminProductsPage() {
                   name: '',
                   description: '',
                   recipe: '',
-                  price: '',
                   image: '',
                   category: '',
                   available: true,
+                  featured: false,
+                  variants: [{ label: 'Regular', price: '' }], // initialize one variant
                 });
               }}
               className="flex items-center space-x-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
@@ -266,18 +312,66 @@ export default function AdminProductsPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Price (₱) *
+                    Pricing Options *
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formData.price}
-                    onChange={(e) =>
-                      setFormData({ ...formData, price: e.target.value })
-                    }
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
-                  />
+
+                  <div className="space-y-3">
+                    {formData.variants.map((variant, index) => (
+                      <div key={index} className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Label (e.g. Regular, 6 pcs, Large)"
+                          value={variant.label}
+                          onChange={(e) => {
+                            const updated = [...formData.variants];
+                            updated[index].label = e.target.value;
+                            setFormData({ ...formData, variants: updated });
+                          }}
+                          className="w-1/2 px-3 py-2 border rounded-lg"
+                          required
+                        />
+
+                        <input
+                          type="number"
+                          placeholder="Price"
+                          value={variant.price}
+                          onChange={(e) => {
+                            const updated = [...formData.variants];
+                            updated[index].price = e.target.value;
+                            setFormData({ ...formData, variants: updated });
+                          }}
+                          className="w-1/2 px-3 py-2 border rounded-lg"
+                          required
+                        />
+
+                        {formData.variants.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = formData.variants.filter((_, i) => i !== index);
+                              setFormData({ ...formData, variants: updated });
+                            }}
+                            className="px-3 bg-red-500 text-white rounded-lg"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          variants: [...formData.variants, { label: '', price: '' }],
+                        })
+                      }
+                      className="text-sm text-amber-700 hover:underline"
+                    >
+                      + Add Variant
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -285,30 +379,53 @@ export default function AdminProductsPage() {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Description *
                 </label>
-                <textarea
-                  required
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none resize-none"
-                />
+                  <Editor
+                    apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY}
+                    value={formData.description}
+                    onEditorChange={(content: string) =>
+                      setFormData({ ...formData, description: content })
+                    }
+                    init={{
+                      height: 300,
+                      menubar: false,
+                      plugins: [
+                        "lists",
+                        "link",
+                        "autolink",
+                        "preview",
+                        "code",
+                      ],
+                      toolbar:
+                        "undo redo | bold italic underline | bullist numlist | link | code",
+                      content_style:
+                        "body { font-family: Inter, sans-serif; font-size: 14px }",
+                    }}
+                  />
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Recipe *
+                  Benefits *
                 </label>
-                <textarea
-                  required
-                  value={formData.recipe}
-                  onChange={(e) =>
-                    setFormData({ ...formData, recipe: e.target.value })
-                  }
-                  rows={3}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none resize-none"
-                />
+                  <Editor
+                    apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY}
+                    value={formData.recipe}
+                    onEditorChange={(content: string) =>
+                      setFormData({ ...formData, recipe: content })
+                    }
+                    init={{
+                      height: 300,
+                      menubar: false,
+                      plugins: [
+                        "lists",
+                        "autolink",
+                        "preview",
+                        "code",
+                      ],
+                      toolbar:
+                        "undo redo | bold italic | bullist numlist | code",
+                    }}
+                  />
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -385,6 +502,21 @@ export default function AdminProductsPage() {
                   Available for order
                 </label>
               </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="featured"
+                  checked={formData.featured}
+                  onChange={(e) =>
+                    setFormData({ ...formData, featured: e.target.checked })
+                  }
+                  className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                />
+                <label htmlFor="featured" className="ml-2 text-sm text-gray-700">
+                  Featured Product
+                </label>
+              </div>
+
 
               <div className="flex space-x-4">
                 <button
@@ -423,6 +555,7 @@ export default function AdminProductsPage() {
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none w-64"
             />
           </div>
+
           <div className="divide-y divide-gray-200">
             {filteredProducts.length === 0 ? (
               <div className="p-8 text-center text-gray-600">
@@ -430,7 +563,10 @@ export default function AdminProductsPage() {
               </div>
             ) : (
               filteredProducts.map((product) => (
-                <div key={product?.id} className="p-6 hover:bg-gray-50 transition-colors">
+                <div
+                  key={product?.id}
+                  className="p-6 hover:bg-gray-50 transition-colors"
+                >
                   <div className="flex items-start space-x-4">
                     <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
                       <Image
@@ -440,27 +576,45 @@ export default function AdminProductsPage() {
                         className="object-cover"
                       />
                     </div>
+
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
                         <div>
                           <h3 className="text-lg font-bold text-gray-900">
                             {product?.name}
                           </h3>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {product?.description}
-                          </p>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {product?.recipe}
-                          </p>
-                          <div className="flex items-center space-x-4 mt-2">
-                            <span className="text-lg font-bold text-amber-600">
-                              ₱{product?.price}
-                            </span>
+
+                          <div
+                            className="text-sm text-gray-600 mt-1 prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{
+                              __html: product?.description ?? '',
+                            }}
+                          />
+
+                          <div
+                            className="text-sm text-gray-600 mt-1 prose prose-sm max-w-none"
+                            dangerouslySetInnerHTML={{
+                              __html: product?.recipe ?? '',
+                            }}
+                          />
+
+                          {/* Variants Display */}
+                          <div className="flex flex-wrap items-center space-x-4 mt-2">
+                            {product?.variants.map((variant) => (
+                              <span
+                                key={variant.id}
+                                className="text-lg font-bold text-amber-600"
+                              >
+                                {variant.label}: ₱{variant.price}
+                              </span>
+                            ))}
+
                             {product?.category && (
                               <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
                                 {product?.category}
                               </span>
                             )}
+
                             <button
                               onClick={() => toggleAvailability(product)}
                               className={`text-xs px-3 py-1 rounded-full font-medium ${
@@ -471,8 +625,20 @@ export default function AdminProductsPage() {
                             >
                               {product?.available ? 'Available' : 'Unavailable'}
                             </button>
+
+                            <button
+                              onClick={() => toggleFeatured(product)}
+                              className={`text-xs px-3 py-1 rounded-full font-medium ${
+                                product?.featured
+                                  ? 'bg-green-100 text-blue-700'
+                                  : 'bg-red-100 text-red-700'
+                              }`}
+                            >
+                              {product?.featured ? 'Featured' : 'Not Featured'}
+                            </button>
                           </div>
                         </div>
+
                         <div className="flex space-x-2">
                           <button
                             onClick={() => handleEdit(product)}

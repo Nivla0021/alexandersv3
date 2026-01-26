@@ -18,3 +18,7 @@ tsconfig.tsbuildinfo
 
 # misc
 .DS_Store
+
+.vscode/
+/public/product_images/*
+!/public/product_images/.gitkeep

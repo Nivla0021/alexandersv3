@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { signIn, useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,12 @@ export default function LoginForm() {
           }
         });
       } else if (result?.ok) {
+        // Fetch the session to get user role
+        const response = await fetch('/api/auth/session');
+        const session = await response.json();
+        
+        const userRole = session?.user?.role;
+        
         toast.success('Login successful!', {
           duration: 3000,
           style: {
@@ -53,9 +59,15 @@ export default function LoginForm() {
           }
         });
         
-        // Redirect based on callback URL or default to home
-        const callbackUrl = searchParams?.get('callbackUrl') || '/';
-        router.push(callbackUrl);
+        // Redirect based on user role
+        if (userRole === 'admin') {
+          // Admin users go to admin dashboard
+          router.push('/admin/dashboard');
+        } else {
+          // Customer users go to callback URL or home
+          const callbackUrl = searchParams?.get('callbackUrl') || '/';
+          router.push(callbackUrl);
+        }
         router.refresh();
       }
     } catch (error) {
@@ -185,7 +197,6 @@ export default function LoginForm() {
             </p>
           </div>
 
-          {/* Admin Login Link */}
           <div className="text-center pt-2">
             <Link
               href="/auth/forgot-password"

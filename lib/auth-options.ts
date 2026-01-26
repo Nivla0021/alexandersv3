@@ -1,10 +1,10 @@
 import { NextAuthOptions } from 'next-auth';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from "@/lib/prisma";
 import bcrypt from 'bcryptjs';
+import { checkSignupRateLimit, resetRateLimit } from '@/lib/rate-limit';
 
-const prisma = new PrismaClient();
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
@@ -15,16 +15,37 @@ export const authOptions: NextAuthOptions = {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
       },
-      async authorize(credentials) {
+
+      async authorize(credentials, req) {
         if (!credentials?.email || !credentials?.password) {
           throw new Error('Invalid credentials');
         }
 
+        const email = credentials.email.trim().toLowerCase();
+
+        // -----------------------------
+        // RATE LIMITING (LOGIN)
+        // -----------------------------
+        const ip =
+          req?.headers?.['x-forwarded-for']?.toString().split(',')[0] ||
+          req?.headers?.['x-real-ip']?.toString() ||
+          '127.0.0.1';
+
+        const rateLimitKey = `login:${email}:${ip}`;
+        const { success } = await checkSignupRateLimit(rateLimitKey);
+
+        if (!success) {
+          throw new Error('Too many login attempts. Please try again later.');
+        }
+
+        // -----------------------------
+        // USER LOOKUP
+        // -----------------------------
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+          where: { email },
         });
 
-        if (!user || !user?.password) {
+        if (!user || !user.password) {
           throw new Error('Invalid credentials');
         }
 
@@ -42,6 +63,11 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Invalid credentials');
         }
 
+        // -----------------------------
+        // ✅ SUCCESS → RESET RATE LIMIT
+        // -----------------------------
+        await resetRateLimit(rateLimitKey);
+
         return {
           id: user.id,
           email: user.email,
@@ -53,6 +79,7 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
+
   callbacks: {
     async jwt({ token, user, trigger }) {
       if (user) {
@@ -61,7 +88,7 @@ export const authOptions: NextAuthOptions = {
         token.phone = (user as any).phone;
         token.address = (user as any).address;
       }
-      
+
       // Refetch user data when session is updated
       if (trigger === 'update' && token.id) {
         const freshUser = await prisma.user.findUnique({
@@ -75,7 +102,7 @@ export const authOptions: NextAuthOptions = {
             role: true,
           },
         });
-        
+
         if (freshUser) {
           token.name = freshUser.name;
           token.email = freshUser.email;
@@ -84,9 +111,10 @@ export const authOptions: NextAuthOptions = {
           token.role = freshUser.role;
         }
       }
-      
+
       return token;
     },
+
     async session({ session, token }) {
       if (session?.user) {
         (session.user as any).role = token.role;
@@ -98,11 +126,14 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
+
   session: {
     strategy: 'jwt',
   },
+
   pages: {
     signIn: '/auth/login',
   },
+
   secret: process.env.NEXTAUTH_SECRET,
 };

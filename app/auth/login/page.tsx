@@ -6,9 +6,15 @@ import LoginForm from './LoginForm';
 export default async function LoginPage() {
   const session = await getServerSession(authOptions);
 
-  // If user is already logged in, redirect to home
+  // If user is already logged in, redirect based on role
   if (session?.user) {
-    redirect('/');
+    const userRole = (session.user as any)?.role;
+    
+    if (userRole === 'admin') {
+      redirect('/admin/dashboard');
+    } else {
+      redirect('/');
+    }
   }
 
   return <LoginForm />;

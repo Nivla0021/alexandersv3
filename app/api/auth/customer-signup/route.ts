@@ -1,63 +1,40 @@
-//api/auth/customer-signup/route.ts
+// api/auth/customer-signup/route.ts
 import { NextResponse } from 'next/server';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
-import { signupRateLimit } from '@/lib/rate-limit';
-
+import { checkSignupRateLimit } from '@/lib/rate-limit';
 
 const prisma = new PrismaClient();
 
 export const dynamic = 'force-dynamic';
 
 // -------------------- HELPERS --------------------
-
-// Password validation helper
 function validatePassword(password: string): { valid: boolean; message?: string } {
-  if (password.length < 8) {
-    return { valid: false, message: 'Password must be at least 8 characters long' };
-  }
-  if (!/[A-Z]/.test(password)) {
-    return { valid: false, message: 'Password must contain at least one uppercase letter' };
-  }
-  if (!/[a-z]/.test(password)) {
-    return { valid: false, message: 'Password must contain at least one lowercase letter' };
-  }
-  if (!/[0-9]/.test(password)) {
-    return { valid: false, message: 'Password must contain at least one number' };
-  }
-  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-    return { valid: false, message: 'Password must contain at least one special character' };
-  }
+  if (password.length < 8) return { valid: false, message: 'Password must be at least 8 characters long' };
+  if (!/[A-Z]/.test(password)) return { valid: false, message: 'Password must contain at least one uppercase letter' };
+  if (!/[a-z]/.test(password)) return { valid: false, message: 'Password must contain at least one lowercase letter' };
+  if (!/[0-9]/.test(password)) return { valid: false, message: 'Password must contain at least one number' };
+  if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) return { valid: false, message: 'Password must contain at least one special character' };
   return { valid: true };
 }
 
-// Email validation helper
 function validateEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return emailRegex.test(email);
 }
 
-// Name normalization helper
 function capitalizeFullName(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/\b\w/g, (c) => c.toUpperCase());
+  return name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 // -------------------- EMAIL SETUP --------------------
-
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
   port: parseInt(process.env.SMTP_PORT || '587'),
   secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
+  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
 });
 
 const LIMITS = {
@@ -68,165 +45,93 @@ const LIMITS = {
   address: { min: 5, max: 500 },
 };
 
-function validateLength(
-  value: string,
-  field: string,
-  min: number,
-  max: number
-) {
-  if (value.length < min || value.length > max) {
-    return `${field} must be between ${min} and ${max} characters`;
-  }
+function validateLength(value: string, field: string, min: number, max: number) {
+  if (value.length < min || value.length > max) return `${field} must be between ${min} and ${max} characters`;
   return null;
 }
 
 // -------------------- API HANDLER --------------------
-
 export async function POST(request: Request) {
   try {
-    // -----------------------------
-    // RATE LIMITING (ANTI-SPAM)
-    // -----------------------------
-    const ip =
-      request.headers.get('x-forwarded-for')?.split(',')[0] ??
-      request.headers.get('x-real-ip') ??
-      '127.0.0.1';
+    const body = await request.json();
+    let { name, email, password, phone, address } = body;
 
-    const { success } = await signupRateLimit.limit(`signup:${ip}`);
-
-    console.log('RATE LIMIT DEBUG', {
-      ip,
-      success: result.success,
-      remaining: result.remaining,
-      reset: result.reset,
-    });
-
-    if (!success) {
-      return NextResponse.json(
-        { error: 'Too many signup attempts. Please try again later.' },
-        { status: 429 }
-      );
-    }
-    let { name, email, password, phone, address } = await request.json();
-
-    // -----------------------------
-    // Normalize input
-    // -----------------------------
     name = name?.trim();
     email = email?.trim().toLowerCase();
     phone = phone?.trim();
     address = address?.trim();
 
-    // -----------------------------
-    // Required fields
-    // -----------------------------
-    if (!name || !email || !password) {
-      return NextResponse.json(
-        { error: 'Name, email, and password are required' },
-        { status: 400 }
-      );
-    }
+    if (!name || !email || !password) return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
+    if (!validateEmail(email)) return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) return NextResponse.json({ error: passwordValidation.message }, { status: 400 });
 
-    // -----------------------------
-    // Name character validation
-    // -----------------------------
-    if (!/^[a-zA-Z\s.'-]+$/.test(name)) {
-      return NextResponse.json(
-        { error: 'Name contains invalid characters' },
-        { status: 400 }
-      );
-    }
+    if (!/^[a-zA-Z\s.'-]+$/.test(name)) return NextResponse.json({ error: 'Name contains invalid characters' }, { status: 400 });
 
-    // -----------------------------
-    // Length validations
-    // -----------------------------
     let error =
       validateLength(name, 'Name', LIMITS.name.min, LIMITS.name.max) ||
       validateLength(email, 'Email', LIMITS.email.min, LIMITS.email.max) ||
       validateLength(password, 'Password', LIMITS.password.min, LIMITS.password.max);
 
-    if (error) {
-      return NextResponse.json({ error }, { status: 400 });
-    }
-
+    if (error) return NextResponse.json({ error }, { status: 400 });
     if (phone) {
       error = validateLength(phone, 'Phone number', LIMITS.phone.min, LIMITS.phone.max);
-      if (error) {
-        return NextResponse.json({ error }, { status: 400 });
-      }
+      if (error) return NextResponse.json({ error }, { status: 400 });
     }
-
     if (address) {
       error = validateLength(address, 'Address', LIMITS.address.min, LIMITS.address.max);
-      if (error) {
-        return NextResponse.json({ error }, { status: 400 });
-      }
-    }
-
-    // -----------------------------
-    // Email format
-    // -----------------------------
-    if (!validateEmail(email)) {
-      return NextResponse.json(
-        { error: 'Invalid email format' },
-        { status: 400 }
-      );
-    }
-
-    // -----------------------------
-    // Password strength
-    // -----------------------------
-    const passwordValidation = validatePassword(password);
-    if (!passwordValidation.valid) {
-      return NextResponse.json(
-        { error: passwordValidation.message },
-        { status: 400 }
-      );
+      if (error) return NextResponse.json({ error }, { status: 400 });
     }
 
     // -------------------- USER CHECK --------------------
+    const existingUser = await prisma.user.findUnique({ where: { email } });
 
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
+    // -----------------------------
+    // RATE LIMITING (ANTI-SPAM)
+    // -----------------------------
+    // Key: limit by unverified email only
+    const rateLimitKey = `signup:${email}`;
+    if (!existingUser || !existingUser.emailVerified) {
+      const { success, remaining, reset } = await checkSignupRateLimit(rateLimitKey);
 
-    if (existingUser) {
-      if (existingUser.emailVerified) {
+      console.log('RATE LIMIT DEBUG', { email, success, remaining, reset });
+
+      if (!success) {
         return NextResponse.json(
-          { error: 'An account with this email already exists' },
-          { status: 400 }
+          { error: 'Too many signup attempts for this email. Please try again after 5 minutes.' },
+          { status: 429 }
         );
-      } else {
-        // Resend verification
-        const verificationToken = crypto.randomBytes(32).toString('hex');
-        const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-        await prisma.user.update({
-          where: { id: existingUser.id },
-          data: {
-            emailVerificationToken: verificationToken,
-            emailVerificationExpires: verificationExpires,
-          },
-        });
-
-        await sendVerificationEmail(email, name, verificationToken);
-
-        return NextResponse.json({
-          message: 'Verification email resent. Please check your inbox.',
-          requiresVerification: true,
-        });
       }
+    } else {
+      // Verified email → block immediately
+      return NextResponse.json({ error: 'An account with this email already exists' }, { status: 400 });
     }
 
-    // -------------------- CREATE USER --------------------
-
-    const hashedPassword = await bcrypt.hash(password, 12);
+    // -------------------- CREATE OR RESEND --------------------
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+    if (existingUser && !existingUser.emailVerified) {
+      // Resend verification
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: { emailVerificationToken: verificationToken, emailVerificationExpires: verificationExpires },
+      });
+
+      await sendVerificationEmail(email, name, verificationToken);
+
+      return NextResponse.json({
+        message: 'Verification email resent. Please check your inbox.',
+        requiresVerification: true,
+      });
+    }
+
+    // -------------------- CREATE NEW USER --------------------
+    const hashedPassword = await bcrypt.hash(password, 12);
+
     const user = await prisma.user.create({
       data: {
-        name,
+        name: capitalizeFullName(name),
         email,
         password: hashedPassword,
         phone: phone || null,
@@ -251,15 +156,11 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error('Error in customer signup:', error);
-    return NextResponse.json(
-      { error: 'An error occurred during registration. Please try again.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'An error occurred during registration. Please try again.' }, { status: 500 });
   }
 }
 
 // -------------------- EMAIL FUNCTION --------------------
-
 async function sendVerificationEmail(email: string, name: string, token: string) {
   const verificationUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/auth/verify-email?token=${token}`;
 
