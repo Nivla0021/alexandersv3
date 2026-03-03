@@ -1,13 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
-import { prisma } from "@/lib/prisma";
+import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -15,6 +15,9 @@ export async function PATCH(
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // ✅ Await params in Next.js 15
+    const { id } = await context.params;
 
     const { status } = await request.json();
 
@@ -26,7 +29,7 @@ export async function PATCH(
     }
 
     const updatedMessage = await prisma.contactSubmission.update({
-      where: { id: params.id },
+      where: { id },
       data: { status },
     });
 
