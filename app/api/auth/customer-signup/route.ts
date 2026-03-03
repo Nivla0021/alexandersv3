@@ -20,10 +20,43 @@ function validatePassword(password: string): { valid: boolean; message?: string 
   return { valid: true };
 }
 
-function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
+const PH_MOBILE_REGEX = /^(09|\+639)\d{9}$/;
+
+const trustedDomains = [
+  'gmail.com',
+  'yahoo.com',
+  'outlook.com',
+  'hotmail.com',
+  'icloud.com',
+  'proton.me',
+  'protonmail.com',
+];
+
+const allowedTLDs = ['.com', '.net', '.org', '.edu', '.gov', '.mail', '.ph'];
+const bannedTLDs = ['.v', '.x', '.zzz', '.fake', '.test'];
+
+function validateEmailStrict(email: string): string | null {
+  const basicRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+
+  if (!basicRegex.test(email)) return 'Invalid email format';
+
+  const domain = email.split('@')[1];
+  if (!domain) return 'Invalid email format';
+
+  if (bannedTLDs.some((tld) => domain.endsWith(tld)))
+    return 'Invalid email domain';
+
+  const isTrustedProvider = trustedDomains.includes(domain);
+  const isAllowedBusinessDomain = allowedTLDs.some((tld) =>
+    domain.endsWith(tld)
+  );
+
+  if (!isTrustedProvider && !isAllowedBusinessDomain)
+    return 'Please use a valid email provider or company email';
+
+  return null;
 }
+
 
 function capitalizeFullName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -54,7 +87,7 @@ function validateLength(value: string, field: string, min: number, max: number) 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    let { name, email, password, phone, address } = body;
+    let { name, email, password, phone, address, location } = body;
 
     name = name?.trim();
     email = email?.trim().toLowerCase();
@@ -62,7 +95,9 @@ export async function POST(request: Request) {
     address = address?.trim();
 
     if (!name || !email || !password) return NextResponse.json({ error: 'Name, email, and password are required' }, { status: 400 });
-    if (!validateEmail(email)) return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+    if (validateEmailStrict(email)) {
+      return NextResponse.json({ error: validateEmailStrict(email) }, { status: 400 });
+    }
     const passwordValidation = validatePassword(password);
     if (!passwordValidation.valid) return NextResponse.json({ error: passwordValidation.message }, { status: 400 });
 
@@ -82,6 +117,36 @@ export async function POST(request: Request) {
       error = validateLength(address, 'Address', LIMITS.address.min, LIMITS.address.max);
       if (error) return NextResponse.json({ error }, { status: 400 });
     }
+
+      if (!phone) {
+        return NextResponse.json({ error: 'Phone is required' }, { status: 400 });
+      }
+      if (!PH_MOBILE_REGEX.test(phone)) {
+        return NextResponse.json(
+          { error: 'Enter a valid PH mobile number (09XXXXXXXXX)' },
+          { status: 400 }
+        );
+      }
+
+        // Address validation
+      if (!location?.cityCode) {
+        return NextResponse.json(
+          { error: 'City / Municipality is required' },
+          { status: 400 }
+        );
+      }
+      if (!location?.barangayCode) {
+        return NextResponse.json(
+          { error: 'Barangay is required' },
+          { status: 400 }
+        );
+      }
+      if (!location?.street?.trim()) {
+        return NextResponse.json(
+          { error: 'Street / House No. is required' },
+          { status: 400 }
+        );
+      }
 
     // -------------------- USER CHECK --------------------
     const existingUser = await prisma.user.findUnique({ where: { email } });

@@ -1,5 +1,19 @@
-import UsersPage from "./users-page";
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/lib/auth-options";
+import UserClient from "./UserClient";
 
-export default function UsersManagementWrapper() {
-  return <UsersPage />;
+export const dynamic = "force-dynamic";
+
+export default async function UsersManagementWrapper() {
+  const session = await getServerSession(authOptions);
+
+  if (
+    !session ||
+    (session.user as any)?.role !== "admin"
+  ) {
+    redirect("/");
+  }
+
+  return <UserClient />;
 }

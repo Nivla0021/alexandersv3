@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -11,12 +11,46 @@ import { Eye, EyeOff, Mail, Lock, User, Phone, MapPin, CheckCircle } from 'lucid
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
 
+type LocationState = {
+  cityCode: string;
+  cityName: string;
+  barangayCode: string;
+  barangayName: string;
+  street: string;
+};
+
+function parsePHAddress(address: string) {
+  if (!address) return null;
+
+  // Example format:
+  // 123 ABC St, Brgy. Pinagbuhatan, Pasig City, Metro Manila
+
+  const parts = address.split(',');
+
+  if (parts.length < 4) return null;
+
+  return {
+    street: parts[0].trim(),
+    barangay: parts[1].replace('Brgy.', '').trim(),
+    city: parts[2].trim(),
+  };
+}
+
+function sanitizeAddressInput(value: string) {
+  return value
+    .replace(/,/g, '')     // remove commas
+    .replace(/\|/g, '')   // remove pipes
+    .trim();
+}
+
 export default function RegisterForm() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [registered, setRegistered] = useState(false);
+  const [cities, setCities] = useState<any[]>([]);
+  const [barangays, setBarangays] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -25,6 +59,35 @@ export default function RegisterForm() {
     phone: '',
     address: '',
   });
+
+  const [location, setLocation] = useState<LocationState>({
+    cityCode: '',
+    cityName: '',
+    barangayCode: '',
+    barangayName: '',
+    street: '',
+  });
+
+    /* -------------------- FETCH CITIES -------------------- */
+  
+    useEffect(() => {
+      fetch('https://psgc.gitlab.io/api/regions/130000000/cities-municipalities')
+        .then(res => res.json())
+        .then(data => setCities(data))
+        .catch(err => console.error('City fetch error:', err));
+    }, []);
+  
+    /* -------------------- FETCH BARANGAYS -------------------- */
+  
+    useEffect(() => {
+      if (!location.cityCode) return;
+  
+      fetch(`https://psgc.gitlab.io/api/cities-municipalities/${location.cityCode}/barangays`)
+        .then(res => res.json())
+        .then(data => setBarangays(data))
+        .catch(err => console.error('Barangay fetch error:', err));
+    }, [location.cityCode]);
+
   const PH_MOBILE_REGEX = /^(09|\+639|639)\d{9}$/;
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -38,12 +101,48 @@ export default function RegisterForm() {
       newErrors.name = 'Name must be at least 2 characters';
     }
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!formData.email.trim()) {
       newErrors.email = 'Email is required';
-    } else if (!emailRegex.test(formData.email)) {
+    }
+
+    const normalized = formData.email.trim().toLowerCase();
+    // Basic format check FIRST (prevents undefined domain)
+    const basicRegex = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/;
+    if (!basicRegex.test(normalized)) {
       newErrors.email = 'Invalid email format';
+    }
+
+    const domain = normalized.split('@')[1];
+
+    if (!domain) {
+      return 'Invalid email format';
+    }
+
+    const trustedDomains = [
+      'gmail.com',
+      'yahoo.com',
+      'outlook.com',
+      'hotmail.com',
+      'icloud.com',
+      'proton.me',
+      'protonmail.com',
+    ];
+
+    const allowedTLDs = ['.com', '.net', '.org', '.edu', '.gov', '.mail', '.ph'];
+
+    const bannedTLDs = ['.v', '.x', '.zzz', '.fake', '.test'];
+
+    if (bannedTLDs.some((tld) => domain.endsWith(tld))) {
+      newErrors.email = 'Invalid email domain';
+    }
+
+    const isTrustedProvider = trustedDomains.includes(domain);
+    const isAllowedBusinessDomain = allowedTLDs.some((tld) =>
+      domain.endsWith(tld)
+    );
+
+    if (!isTrustedProvider && !isAllowedBusinessDomain) {
+      newErrors.email = 'Please use a valid email provider or company email';
     }
 
 
@@ -68,13 +167,26 @@ export default function RegisterForm() {
       newErrors.confirmPassword = 'Passwords do not match';
     }
 
-    // Phone validation (optional)
-    if (formData.phone) {
+    if (!formData.confirmPassword) {
+      newErrors.confirmPassword = 'Confirm Password is required';
+    }
+
+    // Phone validation
       const phone = formData.phone.replace(/\s+/g, '');
-      if (!PH_MOBILE_REGEX.test(phone)) {
+      if (!phone) {
+        newErrors.phone = 'Phone is required';
+      }else if (!PH_MOBILE_REGEX.test(phone)) {
         newErrors.phone =
           'Enter a valid PH mobile number (09XXXXXXXXX)';
       }
+
+        // Address validation
+    if (!location.cityCode) {
+      newErrors.address = 'City / Municipality is required';
+    } else if (!location.barangayCode) {
+      newErrors.address = 'Barangay is required';
+    } else if (!location.street.trim()) {
+      newErrors.address = 'Street / House No. is required';
     }
 
     setErrors(newErrors);
@@ -107,6 +219,9 @@ export default function RegisterForm() {
           .replace(/\s+/g, ' ')
           .replace(/\b\w/g, (char) => char.toUpperCase());
       };
+      const safeStreet = sanitizeAddressInput(location.street);
+
+      const fullAddress = `${safeStreet}, Brgy. ${location.barangayName}, ${location.cityName}, Metro Manila`;
       const res = await fetch('/api/auth/customer-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -115,7 +230,14 @@ export default function RegisterForm() {
           email: formData.email.trim().toLowerCase(),
           password: formData.password,
           phone: formData.phone.trim() || undefined,
-          address: formData.address.trim() || undefined,
+          address: fullAddress || undefined,
+          location: {
+            cityCode: location.cityCode,
+            cityName: location.cityName,
+            barangayCode: location.barangayCode,
+            barangayName: location.barangayName,
+            street: safeStreet,
+          },
         }),
       });
 
@@ -327,10 +449,10 @@ export default function RegisterForm() {
             )}
           </div>
 
-          {/* Phone (Optional) */}
+          {/* Phone */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Phone Number <span className="text-gray-400">(Optional)</span>
+              Phone Number <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -338,7 +460,6 @@ export default function RegisterForm() {
                 type="tel"
                 name="phone"
                 inputMode="numeric"
-                pattern="^(09|\+639|639)\d{9}$"
                 value={formData.phone}
                 onChange={handleChange}
                 placeholder="09XX XXX XXXX"
@@ -353,29 +474,77 @@ export default function RegisterForm() {
             )}
           </div>
 
-          {/* Address (Optional) */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Delivery Address <span className="text-gray-400">(Optional - can be added later)</span>
-            </label>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-              <Textarea
-                name="address"
-                value={formData.address}
-                onChange={handleChange}
-                placeholder="Complete address in Metro Manila"
-                rows={3}
-                className={`pl-10 border-2 ${
-                  errors.address ? 'border-red-300' : 'border-gray-300'
-                } focus:border-amber-400 resize-none`}
-                disabled={loading}
-              />
-            </div>
-            {errors.address && (
-              <p className="text-red-500 text-sm mt-1">{errors.address}</p>
-            )}
-          </div>
+          {/* Address */}
+              <div className="space-y-3">
+                <label className="block text-sm font-semibold text-gray-700">
+                  <MapPin className="inline w-4 h-4 mr-2" />
+                  Delivery Address <span className="text-red-500">*</span>
+                </label>
+
+                <select
+                  className={`w-full border-2 rounded-lg p-2 ${
+                    errors.address ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  value={location.cityCode}
+                  onChange={(e) => {
+                    const city = cities.find(c => c.code === e.target.value);
+                    setLocation({
+                      cityCode: city?.code || '',
+                      cityName: city?.name || '',
+                      barangayCode: '',
+                      barangayName: '',
+                      street: '',
+                    });
+                    setBarangays([]);
+                  }}
+                >
+                  <option value="">Select City / Municipality</option>
+                  {cities.map(city => (
+                    <option key={city.code} value={city.code}>{city.name}</option>
+                  ))}
+                </select>
+
+                <select
+                  className={`w-full border-2 rounded-lg p-2 ${
+                    errors.address ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  value={location.barangayCode}
+                  disabled={!location.cityCode}
+                  onChange={(e) => {
+                    const brgy = barangays.find(b => b.code === e.target.value);
+                    setLocation(prev => ({
+                      ...prev,
+                      barangayCode: brgy?.code || '',
+                      barangayName: brgy?.name || '',
+                    }));
+                  }}
+                >
+                  <option value="">Select Barangay</option>
+                  {barangays.map(b => (
+                    <option key={b.code} value={b.code}>{b.name}</option>
+                  ))}
+                </select>
+
+                <Input
+                  className={`w-full border-2 rounded-lg p-2 ${
+                    errors.address ? 'border-red-500' : 'border-gray-300'
+                  }`}
+                  placeholder="House No / Street / Building / Unit"
+                  value={location.street}
+                  onChange={(e) => {
+                    setLocation(prev => ({ ...prev, street: e.target.value }));
+                  }}
+                />
+                {errors.address && (
+                  <p className="text-sm text-red-600">{errors.address}</p>
+                )}
+
+                {location.street && location.barangayName && location.cityName && (
+                  <p className="text-xs text-gray-500">
+                    Complete address: {location.street}, Brgy. {location.barangayName}, {location.cityName}, Metro Manila
+                  </p>
+                )}
+              </div>
 
           {/* Submit Button */}
           <Button

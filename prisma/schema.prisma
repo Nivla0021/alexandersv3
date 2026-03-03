@@ -2,9 +2,10 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// prisma/schema.prisma
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url  	    = env("DATABASE_URL")
 }
 
 model Account {
@@ -43,6 +44,12 @@ model User {
   emailVerified DateTime?
   image         String?
 
+  // Discount approval at user level (one-time approval)
+  discountApproved   Boolean   @default(false)
+  discountType       String? // "PWD" or "SENIOR"
+  discountApprovedAt DateTime?
+  discountReviewedBy String?
+
   // Auth
   password String @db.VarChar(255)
   role     String @default("customer") @db.VarChar(20)
@@ -62,9 +69,45 @@ model User {
   modifiedAt DateTime @updatedAt
 
   // Relations
-  accounts Account[]
-  sessions Session[]
-  orders   Order[]
+  accounts          Account[]
+  sessions          Session[]
+  orders            Order[]
+  discountApprovals DiscountApproval[] // Relation to discount approvals
+}
+
+// Discount Approval Model (for historical tracking)
+model DiscountApproval {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Discount Information
+  discountType    String // "PWD" or "SENIOR"
+  birthday        DateTime
+  idNumber        String
+  idImageUrl      String // URL/path to uploaded ID image
+  idImagePublicId String? // For Cloudinary if you use it later
+
+  // Order Information (optional) - This is a one-to-one relation
+  orders Order[]
+
+  // Status
+  isApproved Boolean @default(false)
+  status     String  @default("PENDING") // PENDING, APPROVED, REJECTED
+
+  // Admin Review
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("discount_approvals")
 }
 
 model VerificationToken {
@@ -75,46 +118,59 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+enum ProductType {
+  in_store
+  online
+  both
+}
+
+enum PriceType {
+  in_store
+  online
+}
+
 model Product {
-  id          String        @id @default(cuid())
-  name        String        @unique
-  description String        @db.Text
-  recipe      String?       @db.Text
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String           @db.Text
+  recipe      String?          @db.Text
   image       String
   category    String?
-  available   Boolean       @default(true)
-  featured    Boolean       @default(false)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  available   Boolean          @default(true)
+  featured    Boolean          @default(false)
+  productType ProductType       @default(both) // New field
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   orderItems  OrderItem[]
   sales       ProductSale[]
   variants    ProductVariant[]
 }
 
 model ProductVariant {
-  id        String   @id @default(cuid())
-  label     String
-  price     Float
+  id    String @id @default(cuid())
+  label String
+  inStorePrice Float?   // Nullable - for in-store pricing
+  onlinePrice  Float?   // Nullable - for online pricing
 
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   productId String
 }
 
 model SliderImage {
-  id          String        @id @default(cuid())
-  name        String        @unique
-  image       String
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id        String   @id @default(cuid())
+  name      String   @unique
+  image     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Order {
-  id          String @id @default(cuid())
-  orderNumber String @unique
+  id                String  @id @default(cuid())
+  orderNumber       String  @unique
   transactionNumber String? @unique
 
-  orderSource String @default("ONLINE") // ONLINE | KIOSK
-  orderMode   String?                  // DINE-IN | TAKEOUT | null
+  orderSource String  @default("ONLINE") // ONLINE | KIOSK
+  orderMode   String? // DINE-IN | TAKEOUT | null
 
   userId String?
   user   User?   @relation(fields: [userId], references: [id])
@@ -125,12 +181,30 @@ model Order {
   deliveryAddress String? @db.Text
   orderNotes      String? @db.Text
 
-  subtotal Float
-  total    Float
+  subtotal    Float
+  total       Float
+  deliveryFee Float @default(0)
 
   orderStatus   String @default("pending")
   paymentStatus String @default("unpaid")
   paymentMethod String @default("COD")
+
+  deliveryZipCode String?
+  locationData    String? @db.Text
+  gcashReference  String?
+  gcashReceiptUrl  String?   // New field for receipt URL
+
+  // Discount related fields
+  discountApplied Boolean @default(false)
+  discountType    String? // "PWD" or "SENIOR"
+  discountAmount  Float?  @default(0)
+
+  // NEW: Link to discount approval that was used for this order
+  discountApprovalId String?
+  discountApproval   DiscountApproval? @relation(fields: [discountApprovalId], references: [id])
+
+  // NEW: Store detailed discount info as JSON for complex calculations
+  discountDetails Json? // Stores which item got discount and calculation details
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -140,18 +214,25 @@ model Order {
 }
 
 model OrderItem {
-  id            String  @id @default(cuid())
-  orderId       String
-  productId     String
+  id        String @id @default(cuid())
+  orderId   String
+  productId String
 
-  variantId     String?    // 🔹 new
-  variantLabel  String?    // 🔹 new
+  variantId    String?
+  variantLabel String?
 
-  quantity      Int
-  price         Float
+  quantity Int
+  price    Float // Original price per item
+  priceType       PriceType?    // New: track if this was in-store or online price
+  
+  // NEW: Item-specific discount fields
+  discountApplied Boolean @default(false) // Whether this specific item got discount
+  discountAmount  Float?  @default(0) // Total discount amount for this item
+  discountedPrice Float? // Final price after discount (price * quantity - discountAmount)
+  isHighestPriced Boolean @default(false) // Whether this was the highest priced item that got the discount
 
-  order         Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product       Product @relation(fields: [productId], references: [id])
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
 }
 
 model ProductSale {
@@ -162,6 +243,7 @@ model ProductSale {
   productName String
   category    String?
   unitPrice   Float
+  priceType   PriceType? // New: track if this was in-store or online price
   quantity    Int
   total       Float
   soldAt      DateTime @default(now())
@@ -169,7 +251,7 @@ model ProductSale {
   product Product @relation(fields: [productId], references: [id])
   order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
-  @@unique([orderId, productId]) // 🔒 prevents duplicates
+  @@unique([orderId, productId])
   @@index([soldAt])
 }
 
@@ -186,7 +268,7 @@ model ContactSubmission {
 model Testimonial {
   id           String   @id @default(cuid())
   customerName String
-  message      String   @db.VarChar(500) // max 500 characters
+  message      String   @db.VarChar(500)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
@@ -200,3 +282,24 @@ model FAQ {
   updatedAt DateTime @updatedAt
 }
 
+// Add this to your schema.prisma
+model GCashQRCode {
+  id          String   @id @default(cuid())
+  name        String
+  imageUrl    String
+  isActive    Boolean  @default(false)
+  amount      Float?
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("gcash_qr_codes")
+}
+
+model Setting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

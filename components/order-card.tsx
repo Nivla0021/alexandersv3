@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { ShoppingBag } from 'lucide-react';
+// components/order-card.tsx
+import React, { useState, useEffect } from 'react';
+import { ShoppingBag, Award, Percent, ChevronRight, Info, Truck } from 'lucide-react';
 import { OrderPayload } from '@/types/order';
 
 interface OrderCardProps {
@@ -11,6 +12,16 @@ interface OrderCardProps {
   getModeColor?: (mode: string) => string;
   getStatusColor?: (status: string) => string;
   formatPhp?: (value: number) => string;
+}
+
+interface DiscountedItemInfo {
+  id: string;
+  name: string;
+  originalPrice: number;
+  quantity: number;
+  discountAmount: number;
+  discountedPrice: number;
+  variantLabel?: string;
 }
 
 export function OrderCard({ 
@@ -30,6 +41,54 @@ export function OrderCard({
   const [change, setChange] = useState<number>(0);
   const [selectedOrder, setSelectedOrder] = useState<OrderPayload | null>(null)
   const [showModal, setShowModal] = useState(false);
+  
+  // New state for KIOSK discount
+  const [discountEligible, setDiscountEligible] = useState(false);
+  const [discountType, setDiscountType] = useState<'PWD' | 'SENIOR' | null>(null);
+  const [kioskDiscountAmount, setKioskDiscountAmount] = useState(0);
+  const [kioskDiscountedItem, setKioskDiscountedItem] = useState<DiscountedItemInfo | null>(null);
+  
+  // Loading states
+  const [loading, setLoading] = useState<string | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [receiptLoading, setReceiptLoading] = useState(false);
+  const [onlineReceiptLoading, setOnlineReceiptLoading] = useState(false);
+
+  // Determine if order is from KIOSK
+  const isKioskOrder = order.orderSource === 'KIOSK';
+  
+  // For KIOSK orders, delivery fee should be 0 (double-check)
+  const effectiveDeliveryFee = isKioskOrder ? 0 : (order.deliveryFee || 0);
+
+  // Calculate discount for KIOSK orders when eligibility is selected
+  useEffect(() => {
+    if (isKioskOrder && discountEligible && discountType) {
+      // Find the highest priced item
+      const items = order.orderItems;
+      if (items.length === 0) return;
+
+      const highestPriceItem = items.reduce((max, item) => 
+        item.price > max.price ? item : max
+      , items[0]);
+      
+      const discountAmount = highestPriceItem.price * 0.2;
+      
+      setKioskDiscountedItem({
+        id: highestPriceItem.id,
+        name: highestPriceItem.product.name,
+        originalPrice: highestPriceItem.price,
+        quantity: 1,
+        discountAmount: discountAmount,
+        discountedPrice: highestPriceItem.price - discountAmount,
+        variantLabel: highestPriceItem.variantLabel || undefined,
+      });
+      
+      setKioskDiscountAmount(discountAmount);
+    } else {
+      setKioskDiscountedItem(null);
+      setKioskDiscountAmount(0);
+    }
+  }, [discountEligible, discountType, order.orderItems, isKioskOrder]);
 
   const showDetailsModal = (order: OrderPayload) => {
     setSelectedOrder(order);
@@ -44,19 +103,77 @@ export function OrderCard({
   // Show modal function
   const showPaymentModal = (orderId: string) => {
     if (order.id === orderId) {
-      setIsModalOpen(true);
+      // Reset discount states when opening modal
+      setDiscountEligible(false);
+      setDiscountType(null);
+      setKioskDiscountAmount(0);
+      setKioskDiscountedItem(null);
       setGivenAmount('');
       setError('');
       setChange(0);
+      setIsModalOpen(true);
     }
   };
 
   const closeModal = () => setIsModalOpen(false);
 
-  const total = order.orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // Recalculate total to ensure delivery fee is correct for KIOSK orders
+  const calculatedItemsTotal = order.orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  
+  // Calculate total with KIOSK discount if applicable
+  const getTotal = () => {
+    if (isKioskOrder) {
+      const baseTotal = order.total || calculatedItemsTotal;
+      if (discountEligible && discountType && kioskDiscountAmount > 0) {
+        return baseTotal - kioskDiscountAmount;
+      }
+      return baseTotal;
+    }
+    return order.total ?? calculatedItemsTotal + effectiveDeliveryFee;
+  };
 
-  const printReceipt = (order: OrderPayload, given: number, change: number) => {
-    const total = order.total ?? order.subtotal ?? 0;
+  const total = getTotal();
+  
+  // Calculate original subtotal (before discount)
+  const originalSubtotal = order.orderItems.reduce(
+    (sum, item) => sum + (item.price * item.quantity), 
+    0
+  );
+  
+  // Check if order has discount (existing or new KIOSK discount)
+  const hasDiscount = (order.discountApplied || false) || (isKioskOrder && discountEligible && discountType && kioskDiscountAmount > 0);
+  const displayDiscountAmount = isKioskOrder && discountEligible ? kioskDiscountAmount : (order.discountAmount || 0);
+  const displayDiscountType = isKioskOrder && discountEligible ? discountType : order.discountType;
+  const displayDiscountDetails = isKioskOrder && discountEligible && kioskDiscountedItem ? {
+    appliedToItem: kioskDiscountedItem
+  } : order.discountDetails;
+  
+  // Check if order has delivery fee (only for ONLINE orders and fee > 0)
+  const hasDeliveryFee = !isKioskOrder && effectiveDeliveryFee > 0;
+
+  const printReceipt = async (order: OrderPayload, given: number, change: number) => {
+    setReceiptLoading(true);
+    
+    // Simulate API/database call delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    const total = getTotal();
+
+    // Determine which items have discount for receipt display
+    const receiptItems = order.orderItems.map(item => {
+      const itemHasDiscount = isKioskOrder && discountEligible && kioskDiscountedItem?.id === item.id;
+      const itemTotal = item.price * item.quantity;
+      const discountedTotal = itemHasDiscount && kioskDiscountedItem 
+        ? itemTotal - kioskDiscountedItem.discountAmount 
+        : itemTotal;
+      
+      return {
+        ...item,
+        displayHasDiscount: itemHasDiscount,
+        displayDiscountedTotal: discountedTotal,
+        displayDiscountAmount: itemHasDiscount ? kioskDiscountedItem?.discountAmount : 0,
+      };
+    });
 
     const receiptHTML = `
       <html>
@@ -74,6 +191,8 @@ export function OrderCard({
             .items { margin-top: 8px; }
             .item-row { display: flex; justify-content: space-between; }
             .totals { margin-top: 8px; font-weight: bold; }
+            .discount-badge { background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; display: inline-block; margin-left: 4px; }
+            .strike { text-decoration: line-through; color: #999; font-size: 11px; }
           </style>
         </head>
         <body>
@@ -92,23 +211,42 @@ export function OrderCard({
           <div class="line"></div>
 
           <div class="items">
-            ${order.orderItems
+            ${receiptItems
               .map(
-                (item) => `
-                  <div class="item-row">
-                    <span>
-                      ${item.quantity} x ${item.product.name} ${
-                        item.variantLabel ? `(${item.variantLabel})` : ""
-                      }
-                    </span>
-                    <span>₱${(item.quantity * item.price).toFixed(2)}</span>
-                  </div>
-                `
+                (item) => {
+                  const itemTotal = item.quantity * item.price;
+                  const itemHasDiscount = item.displayHasDiscount;
+                  const discountedTotal = itemHasDiscount ? item.displayDiscountedTotal : itemTotal;
+                  
+                  return `
+                    <div class="item-row">
+                      <span>
+                        ${item.quantity} x ${item.product.name} ${
+                          item.variantLabel ? `(${item.variantLabel})` : ""
+                        }
+                        ${itemHasDiscount ? '<span class="discount-badge">20% OFF</span>' : ''}
+                      </span>
+                      <span>
+                        ${itemHasDiscount ? `<span class="strike">₱${itemTotal.toFixed(2)}</span> ` : ''}
+                        ₱${discountedTotal.toFixed(2)}
+                      </span>
+                    </div>
+                  `;
+                }
               )
               .join("")}
           </div>
 
           <div class="line"></div>
+
+          ${hasDiscount ? `
+            <div class="item-row"><span>Subtotal:</span><span>₱${originalSubtotal.toFixed(2)}</span></div>
+            <div class="item-row" style="color: #10b981;"><span>Discount (${displayDiscountType} 20%):</span><span>-₱${displayDiscountAmount.toFixed(2)}</span></div>
+          ` : ''}
+
+          ${hasDeliveryFee ? `
+            <div class="item-row"><span>Delivery Fee:</span><span>₱${effectiveDeliveryFee.toFixed(2)}</span></div>
+          ` : ''}
 
           <div class="totals">
             <div class="item-row"><span>Total:</span><span>₱${total.toFixed(2)}</span></div>
@@ -134,10 +272,17 @@ export function OrderCard({
     const win = window.open("", "width=300,height=600");
     win?.document.write(receiptHTML);
     win?.document.close();
+    
+    setReceiptLoading(false);
   };
 
 
-  const printOnlineReceipt = (order: OrderPayload) => {
+  const printOnlineReceipt = async (order: OrderPayload) => {
+    setOnlineReceiptLoading(true);
+    
+    // Simulate API/database call delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
     const total = order.total ?? order.subtotal ?? 0;
 
     const receiptHTML = `
@@ -156,6 +301,8 @@ export function OrderCard({
             .items { margin-top: 8px; }
             .item-row { display: flex; justify-content: space-between; }
             .totals { margin-top: 8px; font-weight: bold; }
+            .discount-badge { background: #10b981; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; display: inline-block; margin-left: 4px; }
+            .strike { text-decoration: line-through; color: #999; font-size: 11px; }
           </style>
         </head>
         <body>
@@ -184,21 +331,40 @@ export function OrderCard({
           <div class="items">
             ${order.orderItems
               .map(
-                (item) => `
-                <div class="item-row">
-                  <span>
-                    ${item.quantity} x ${item.product.name} ${
-                      item.variantLabel ? `(${item.variantLabel})` : ""
-                    }
-                  </span>
-                  <span>₱${(item.quantity * item.price).toFixed(2)}</span>
-                </div>
-              `
+                (item) => {
+                  const itemTotal = item.quantity * item.price;
+                  const itemHasDiscount = item.discountApplied;
+                  const discountedTotal = itemHasDiscount && item.discountedPrice ? item.discountedPrice : itemTotal;
+                  
+                  return `
+                    <div class="item-row">
+                      <span>
+                        ${item.quantity} x ${item.product.name} ${
+                          item.variantLabel ? `(${item.variantLabel})` : ""
+                        }
+                        ${itemHasDiscount ? '<span class="discount-badge">20% OFF</span>' : ''}
+                      </span>
+                      <span>
+                        ${itemHasDiscount ? `<span class="strike">₱${itemTotal.toFixed(2)}</span> ` : ''}
+                        ₱${discountedTotal.toFixed(2)}
+                      </span>
+                    </div>
+                  `;
+                }
               )
               .join("")}
           </div>
 
           <div class="line"></div>
+
+          ${order.discountApplied ? `
+            <div class="item-row"><span>Subtotal:</span><span>₱${originalSubtotal.toFixed(2)}</span></div>
+            <div class="item-row" style="color: #10b981;"><span>Discount (${order.discountType} 20%):</span><span>-₱${(order.discountAmount || 0).toFixed(2)}</span></div>
+          ` : ''}
+
+          ${hasDeliveryFee ? `
+            <div class="item-row"><span>Delivery Fee:</span><span>₱${effectiveDeliveryFee.toFixed(2)}</span></div>
+          ` : ''}
 
           <div class="totals">
             <div class="item-row"><span>Total:</span><span>₱${total.toFixed(2)}</span></div>
@@ -222,9 +388,9 @@ export function OrderCard({
     const win = window.open("", "width=300,height=600");
     win?.document.write(receiptHTML);
     win?.document.close();
+    
+    setOnlineReceiptLoading(false);
   };
-
-
 
   // Handle given amount input
   const handleGivenAmountChange = (value: string) => {
@@ -241,21 +407,36 @@ export function OrderCard({
   };
 
   
-  const handleSubmitPayment = () => {
+  const handleSubmitPayment = async () => {
+    setPaymentLoading(true);
     
-    printReceipt(order, Number(givenAmount), change);
+    await printReceipt(order, Number(givenAmount), change);
     updateOrderStatus?.(order.id, 'to prepare');
 
+    setPaymentLoading(false);
     closeModal();
   };
 
-  const handleUpdateOnlineOrderStatus = () => {
-    printOnlineReceipt(order);
+  const handleUpdateOnlineOrderStatus = async () => {
+    setOnlineReceiptLoading(true);
+    
+    await printOnlineReceipt(order);
     updateOrderStatus?.(order.id, 'to prepare');
 
+    setOnlineReceiptLoading(false);
     closeOnlineModal();
   }
 
+  // Handle status update with loading
+    const handleStatusUpdate = async (orderId: string, status: string, buttonText: string) => {
+    if (!updateOrderStatus) return;
+    
+    setLoading(buttonText); // Use the button text (e.g., "order claimed") as the loading key
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 600));
+    updateOrderStatus(orderId, status); // status is the final value like "completed"
+    setLoading(null);
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-md p-6 flex flex-col h-full">
@@ -291,6 +472,22 @@ export function OrderCard({
               Status: {order.paymentStatus}
             </div>
           )}
+
+          {/* Delivery Fee Badge - Only show for ONLINE orders */}
+          {!isKioskOrder && hasDeliveryFee && (
+            <div className="mt-1 inline-flex items-center text-xs text-gray-600">
+              <Truck className="w-3 h-3 mr-1" />
+              Delivery: ₱{effectiveDeliveryFee.toFixed(2)}
+            </div>
+          )}
+
+          {/* Discount Badge */}
+          {hasDiscount && (
+            <div className="mt-2 inline-flex items-center px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+              <Award className="w-3 h-3 mr-1" />
+              {displayDiscountType} Discount (₱{displayDiscountAmount.toFixed(2)})
+            </div>
+          )}
         </div>
 
         <span
@@ -316,25 +513,83 @@ export function OrderCard({
 
       {/* Middle content */}
       <div className="border-t pt-3 space-y-1 flex-1">
-        {order.orderItems.map((item) => (
-          <p key={item.id} className="text-sm flex justify-between">
-            <span>
-              <strong>{item.quantity}x</strong> {item.product.name}{" "}
-              {item.variantLabel ? `(${item.variantLabel})` : ""}
+        {order.orderItems.map((item) => {
+          const itemHasDiscount = isKioskOrder && discountEligible && kioskDiscountedItem?.id === item.id;
+          const itemTotal = item.price * item.quantity;
+          const discountedTotal = itemHasDiscount && kioskDiscountedItem 
+            ? itemTotal - kioskDiscountedItem.discountAmount 
+            : itemTotal;
+          
+          return (
+            <div key={item.id} className="text-sm">
+              <div className="flex justify-between items-center">
+                <span className="flex items-center gap-1">
+                  <strong>{item.quantity}x</strong> {item.product.name}{" "}
+                  {item.variantLabel ? `(${item.variantLabel})` : ""}
+                  {itemHasDiscount && (
+                    <span className="bg-green-100 text-green-800 text-xs font-bold px-1.5 py-0.5 rounded ml-1">
+                      20% OFF
+                    </span>
+                  )}
+                </span>
+                <span className="font-medium">
+                  {itemHasDiscount ? (
+                    <span className="text-green-600">₱{discountedTotal.toFixed(2)}</span>
+                  ) : (
+                    formatPhp?.(itemTotal)
+                  )}
+                </span>
+              </div>
+              {itemHasDiscount && kioskDiscountedItem && (
+                <div className="flex justify-between text-xs text-gray-500 mt-0.5">
+                  <span className="ml-4">Discount: -₱{kioskDiscountedItem.discountAmount.toFixed(2)}</span>
+                  <span className="line-through text-gray-400">₱{itemTotal.toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Delivery Fee Line - Only show for ONLINE orders */}
+        {!isKioskOrder && hasDeliveryFee && (
+          <div className="flex justify-between text-sm text-gray-600 mt-1 pt-1 border-t border-dashed border-gray-200">
+            <span className="flex items-center">
+              <Truck className="w-3 h-3 mr-1" />
+              Delivery Fee
             </span>
-            <span className="font-medium">{formatPhp?.(item.price * item.quantity)}</span>
-          </p>
-        ))}
+            <span>₱{effectiveDeliveryFee.toFixed(2)}</span>
+          </div>
+        )}
+
+        {/* Discount Summary */}
+        {hasDiscount && (
+          <div className="border-t border-green-200 mt-2 pt-2 text-xs bg-green-50 p-2 rounded">
+            <div className="flex justify-between text-green-700">
+              <span className="font-medium">Original Subtotal:</span>
+              <span>₱{originalSubtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-green-700">
+              <span className="font-medium">Discount ({displayDiscountType} 20%):</span>
+              <span>-₱{displayDiscountAmount.toFixed(2)}</span>
+            </div>
+            {displayDiscountDetails?.appliedToItem && (
+              <div className="mt-1 text-green-600 border-t border-green-200 pt-1">
+                <p className="font-medium text-xs">Applied to:</p>
+                <p className="text-xs">{displayDiscountDetails.appliedToItem.name}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="border-t mt-2 pt-2 text-sm font-semibold flex justify-between">
           <span>Total:</span>
-          <span>₱{total}</span>
+          <span className={hasDiscount ? 'text-green-600' : ''}>₱{total.toFixed(2)}</span>
         </div>
       </div>
 
       {/* Buttons */}
       <div className="mt-4 flex flex-col gap-2">
-        {getNextStatuses &&
+          {getNextStatuses &&
           getNextStatuses(order).length > 0 &&
           updateOrderStatus &&
           order.orderSource === 'KIOSK' &&
@@ -351,15 +606,23 @@ export function OrderCard({
                   if (next === 'order claimed') finalValue = 'completed';
                 }
 
-                updateOrderStatus(order.id, finalValue);
+                handleStatusUpdate(order.id, finalValue, next);
               }}
-              className="w-full py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm"
+              disabled={loading === getNextStatuses(order)[0]}
+              className="w-full py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm disabled:bg-amber-500 disabled:cursor-not-allowed relative flex items-center justify-center"
             >
-              {getNextStatuses(order)[0]}
+              {loading === getNextStatuses(order)[0] ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Processing...
+                </>
+              ) : (
+                getNextStatuses(order)[0].charAt(0).toUpperCase() + getNextStatuses(order)[0].slice(1)
+              )}
             </button>
           )}
 
-        {getNextStatuses &&
+         {getNextStatuses &&
           getNextStatuses(order).length > 0 &&
           updateOrderStatus &&
           order.orderSource === 'ONLINE' &&
@@ -376,11 +639,19 @@ export function OrderCard({
                   if (next === 'order claimed') finalValue = 'completed';
                 }
 
-                updateOrderStatus(order.id, finalValue);
+                handleStatusUpdate(order.id, finalValue, next);
               }}
-              className="w-full py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm"
+              disabled={loading === getNextStatuses(order)[0]}
+              className="w-full py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-medium text-sm disabled:bg-amber-500 disabled:cursor-not-allowed relative flex items-center justify-center"
             >
-              {getNextStatuses(order)[0]}
+              {loading === getNextStatuses(order)[0] ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Processing...
+                </>
+              ) : (
+                getNextStatuses(order)[0].charAt(0).toUpperCase() + getNextStatuses(order)[0].slice(1)
+              )}
             </button>
           )}
 
@@ -414,7 +685,7 @@ export function OrderCard({
       {/* Payment Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl w-96 p-6 relative">
+          <div className="bg-white rounded-xl w-96 p-6 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={closeModal}
               className="absolute top-3 right-3 text-gray-500 hover:text-gray-800 font-bold"
@@ -427,20 +698,128 @@ export function OrderCard({
             <p><strong>Order Number:</strong> {order.orderNumber}</p>
             <p><strong>Transaction Number:</strong> {order.transactionNumber}</p>
 
+            {/* Discount Eligibility Section - Only for KIOSK orders */}
+            {isKioskOrder && (
+              <div className="mt-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                <label className="flex items-center space-x-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={discountEligible}
+                    onChange={(e) => setDiscountEligible(e.target.checked)}
+                    className="w-4 h-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">Discount Eligible</span>
+                </label>
+
+                {discountEligible && (
+                  <div className="mt-3">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Discount Type
+                    </label>
+                    <select
+                      value={discountType || ''}
+                      onChange={(e) => setDiscountType(e.target.value as 'PWD' | 'SENIOR')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    >
+                      <option value="">Select type</option>
+                      <option value="PWD">PWD</option>
+                      <option value="SENIOR">Senior Citizen</option>
+                    </select>
+
+                    {discountType && kioskDiscountedItem && (
+                      <div className="mt-3 p-2 bg-green-50 rounded-lg">
+                        <p className="text-xs text-green-700 font-medium">20% discount applied to:</p>
+                        <p className="text-sm text-green-800 mt-1">{kioskDiscountedItem.name}</p>
+                        <div className="flex justify-between text-xs text-green-600 mt-1">
+                          <span>Original: ₱{kioskDiscountedItem.originalPrice.toFixed(2)}</span>
+                          <ChevronRight className="w-3 h-3" />
+                          <span>Discounted: ₱{kioskDiscountedItem.discountedPrice.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Delivery Fee Info - Only show for ONLINE orders */}
+            {!isKioskOrder && hasDeliveryFee && (
+              <div className="mt-2 p-2 bg-blue-50 rounded-lg">
+                <p className="text-xs text-blue-700 font-medium flex items-center">
+                  <Truck className="w-3 h-3 mr-1" />
+                  Delivery Fee: ₱{effectiveDeliveryFee.toFixed(2)}
+                </p>
+              </div>
+            )}
+
+            {/* Discount Info - Show for existing discounts */}
+            {!isKioskOrder && hasDiscount && (
+              <div className="mt-2 p-2 bg-green-50 rounded-lg">
+                <p className="text-xs text-green-700 font-medium flex items-center">
+                  <Award className="w-3 h-3 mr-1" />
+                  {order.discountType} Discount Applied: -₱{order.discountAmount?.toFixed(2)}
+                </p>
+              </div>
+            )}
+
             <div className="my-4 border-t border-b py-2 max-h-48 overflow-y-auto">
-              {order.orderItems.map((item) => (
-                <div key={item.id} className="flex justify-between mb-1">
-                  <span>
-                    {item.product.name} {item.variantLabel ? `(${item.variantLabel})` : ''} x{item.quantity}
-                  </span>
-                  <span>{formatPhp?.(item.price * item.quantity) || item.price * item.quantity}</span>
-                </div>
-              ))}
+              {order.orderItems.map((item) => {
+                const itemHasDiscount = isKioskOrder && discountEligible && kioskDiscountedItem?.id === item.id;
+                const itemTotal = item.price * item.quantity;
+                const discountedTotal = itemHasDiscount && kioskDiscountedItem 
+                  ? itemTotal - kioskDiscountedItem.discountAmount 
+                  : itemTotal;
+                
+                return (
+                  <div key={item.id} className="flex justify-between mb-1">
+                    <span className="flex items-center">
+                      {item.product.name} {item.variantLabel ? `(${item.variantLabel})` : ''} x{item.quantity}
+                      {itemHasDiscount && (
+                        <span className="ml-1 bg-green-100 text-green-800 text-xs font-bold px-1 py-0.5 rounded">
+                          20% OFF
+                        </span>
+                      )}
+                    </span>
+                    <span className={itemHasDiscount ? 'text-green-600' : ''}>
+                      {itemHasDiscount ? (
+                        <>
+                          <span className="line-through text-gray-400 mr-1">₱{itemTotal.toFixed(2)}</span>
+                          ₱{discountedTotal.toFixed(2)}
+                        </>
+                      ) : (
+                        formatPhp?.(itemTotal) || itemTotal
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
+
+            {hasDiscount && (
+              <div className="mb-2 text-sm">
+                <div className="flex justify-between text-gray-600">
+                  <span>Subtotal:</span>
+                  <span>₱{originalSubtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-green-600">
+                  <span>Discount:</span>
+                  <span>-₱{displayDiscountAmount.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
+            {!isKioskOrder && hasDeliveryFee && (
+              <div className="mb-2 text-sm">
+                <div className="flex justify-between text-gray-600">
+                  <span>Delivery Fee:</span>
+                  <span>+₱{effectiveDeliveryFee.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-between font-bold mb-4">
               <span>Total:</span>
-              <span>₱{total}</span>
+              <span className={hasDiscount ? 'text-green-600' : ''}>₱{total.toFixed(2)}</span>
             </div>
 
             <div className="mb-2">
@@ -462,19 +841,26 @@ export function OrderCard({
               </button>
 
               {error && <p className="text-red-500 text-sm mt-1">{error}</p>}
-              {change > 0 && !error && <p className="text-green-600 text-sm mt-1">Change: ₱{change}</p>}
+              {change > 0 && !error && <p className="text-green-600 text-sm mt-1">Change: ₱{change.toFixed(2)}</p>}
             </div>
 
             <button
               onClick={handleSubmitPayment}
-              className={`w-full py-2 rounded-lg font-medium ${
+              disabled={Number(givenAmount) < total || paymentLoading}
+              className={`w-full py-2 rounded-lg font-medium relative flex items-center justify-center ${
                 Number(givenAmount) < total
                   ? 'bg-gray-400 cursor-not-allowed'
                   : 'bg-amber-600 hover:bg-amber-700 text-white'
               }`}
-              disabled={Number(givenAmount) < total}
             >
-              Submit Payment
+              {paymentLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                  Processing Payment...
+                </>
+              ) : (
+                'Submit Payment'
+              )}
             </button>
           </div>
         </div>
@@ -483,7 +869,7 @@ export function OrderCard({
       {/* Details Modal */}
       {showModal && selectedOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-6 space-y-4">
+          <div className="bg-white w-full max-w-md rounded-lg shadow-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold text-gray-800">Order Details</h2>
 
             <div className="space-y-1 text-sm">
@@ -494,38 +880,121 @@ export function OrderCard({
               <p><strong>Address:</strong> {selectedOrder.deliveryAddress}</p>
               <p><strong>Payment:</strong> {selectedOrder.paymentMethod}</p>
               <p><strong>Status:</strong> {selectedOrder.paymentStatus}</p>
+              {!isKioskOrder && selectedOrder.deliveryFee && selectedOrder.deliveryFee > 0 && (
+                <p><strong>Delivery Fee:</strong> ₱{selectedOrder.deliveryFee.toFixed(2)}</p>
+              )}
             </div>
+
+            {/* Discount Info */}
+            {selectedOrder.discountApplied && (
+              <div className="bg-green-50 p-3 rounded-lg">
+                <h3 className="font-semibold text-green-800 mb-2 flex items-center">
+                  <Award className="w-4 h-4 mr-1" />
+                  {selectedOrder.discountType} Discount Applied
+                </h3>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Discount Amount:</span>
+                    <span className="text-green-600">-₱{(selectedOrder.discountAmount || 0).toFixed(2)}</span>
+                  </div>
+                  {selectedOrder.discountDetails?.appliedToItem && (
+                    <div className="mt-2 pt-2 border-t border-green-200">
+                      <p className="font-medium text-xs">Applied to highest-priced item:</p>
+                      <p className="text-sm">{selectedOrder.discountDetails.appliedToItem.name}</p>
+                      <div className="flex justify-between text-xs mt-1">
+                        <span>Original: ₱{selectedOrder.discountDetails.appliedToItem.originalPrice.toFixed(2)}</span>
+                        <ChevronRight className="w-3 h-3" />
+                        <span>Discounted: ₱{selectedOrder.discountDetails.appliedToItem.discountedPrice.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="border-t pt-3">
               <h3 className="font-semibold text-gray-800">Items</h3>
-              <div className="space-y-1 text-sm">
-                {selectedOrder.orderItems.map((item) => (
-                  <div key={item.id} className="flex justify-between">
-                    <span>
-                      {item.quantity} x {item.product.name} {item.variantLabel ? `(${item.variantLabel})` : ''}
-                    </span>
-                    <span>₱{(item.price * item.quantity).toFixed(2)}</span>
-                  </div>
-                ))}
+              <div className="space-y-2 text-sm">
+                {selectedOrder.orderItems.map((item) => {
+                  const itemHasDiscount = item.discountApplied;
+                  const itemTotal = item.price * item.quantity;
+                  const discountedTotal = itemHasDiscount && item.discountedPrice ? item.discountedPrice : itemTotal;
+                  
+                  return (
+                    <div key={item.id} className="flex justify-between">
+                      <div>
+                        <span>
+                          {item.quantity} x {item.product.name} {item.variantLabel ? `(${item.variantLabel})` : ''}
+                        </span>
+                        {itemHasDiscount && (
+                          <span className="ml-2 bg-green-100 text-green-800 text-xs font-bold px-1 py-0.5 rounded">
+                            20% OFF
+                          </span>
+                        )}
+                      </div>
+                      <span className={itemHasDiscount ? 'text-green-600' : ''}>
+                        {itemHasDiscount ? (
+                          <>
+                            <span className="line-through text-gray-400 mr-1">₱{itemTotal.toFixed(2)}</span>
+                            ₱{discountedTotal.toFixed(2)}
+                          </>
+                        ) : (
+                          `₱${itemTotal.toFixed(2)}`
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
+            {selectedOrder.discountApplied && (
+              <div className="border-t pt-2">
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal:</span>
+                  <span>₱{originalSubtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Discount:</span>
+                  <span>-₱{(selectedOrder.discountAmount || 0).toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+
+            {!isKioskOrder && selectedOrder.deliveryFee && selectedOrder.deliveryFee > 0 && (
+              <div className="flex justify-between text-sm">
+                <span>Delivery Fee:</span>
+                <span>₱{selectedOrder.deliveryFee.toFixed(2)}</span>
+              </div>
+            )}
+
             <div className="border-t pt-3 font-bold flex justify-between">
               <span>Total:</span>
-              <span>₱{total.toFixed(2)}</span>
+              <span className={selectedOrder.discountApplied ? 'text-green-600' : ''}>
+                ₱{(selectedOrder.total || selectedOrder.subtotal || 0).toFixed(2)}
+              </span>
             </div>
 
             <div className="flex justify-end space-x-3 pt-4">
               <button
                 onClick={() => handleUpdateOnlineOrderStatus()}
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm"
+                disabled={onlineReceiptLoading}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm disabled:bg-amber-500 disabled:cursor-not-allowed relative flex items-center justify-center min-w-[120px]"
               >
-                Print Receipt
+                {onlineReceiptLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Printing...
+                  </>
+                ) : (
+                  'Print Receipt'
+                )}
               </button>
 
               <button
                 onClick={closeOnlineModal}
-                className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 text-sm"
+                disabled={onlineReceiptLoading}
+                className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 text-sm disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
                 Close
               </button>
@@ -535,5 +1004,4 @@ export function OrderCard({
       )}
     </div>
   );
-
 }

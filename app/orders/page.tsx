@@ -1,3 +1,4 @@
+// app/orders/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -5,7 +6,10 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { Header } from '@/components/header';
 import { Footer } from '@/components/footer';
-import { Package, Clock, CheckCircle, XCircle, Truck, CreditCard, ArrowLeft, Eye } from 'lucide-react';
+import { 
+  Package, Clock, CheckCircle, XCircle, Truck, CreditCard, 
+  ArrowLeft, Eye, Award, Tag, Info, ChevronRight, Percent 
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -13,18 +17,47 @@ import Image from 'next/image';
 interface OrderItem {
   id: string;
   quantity: number;
-  price: number;              // ✅ snapshot price
+  price: number;
   variantLabel?: string | null;
+  discountApplied: boolean;
+  discountAmount: number | null;
+  discountedPrice: number | null;
+  isHighestPriced: boolean;
   product: {
     name: string;
     image: string;
   };
 }
 
+interface DiscountDetails {
+  type: string;
+  totalDiscount: number;
+  calculationMethod: string;
+  appliedToItem: {
+    id: string;
+    name: string;
+    originalPrice: number;
+    quantity: number;
+    discountAmount: number;
+    discountedPrice: number;
+    variantLabel?: string;
+  };
+  itemsConsidered: Array<{
+    id: string;
+    name: string;
+    price: number;
+    quantity: number;
+    variantLabel?: string;
+  }>;
+  discountApprovalId?: string;
+}
+
 interface Order {
   id: string;
   orderNumber: string;
   total: number;
+  subtotal: number;
+  deliveryFee: number;
   orderStatus: string;
   paymentStatus: string;
   paymentMethod: string;
@@ -33,7 +66,13 @@ interface Order {
   customerEmail: string;
   customerPhone: string;
   deliveryAddress: string;
+  deliveryZipCode?: string;
+  orderNotes?: string;
   orderItems: OrderItem[];
+  discountApplied: boolean;
+  discountType?: string | null;
+  discountAmount?: number | null;
+  discountDetails?: DiscountDetails | null;
 }
 
 export default function OrdersPage() {
@@ -136,6 +175,15 @@ export default function OrdersPage() {
     return status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
+  const formatDiscountType = (type: string | null): string => {
+    if (!type) return '';
+    return type === 'PWD' ? 'PWD Discount' : 'Senior Citizen Discount';
+  };
+
+  const calculateItemTotal = (price: number, quantity: number): number => {
+    return price * quantity;
+  };
+
   if (status === 'loading' || loading) {
     return (
       <div className="min-h-screen flex flex-col">
@@ -214,27 +262,45 @@ export default function OrdersPage() {
                             <CreditCard className="w-4 h-4" />
                             {formatStatus(order.paymentStatus)}
                           </span>
+                          {order.discountApplied && (
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold border bg-green-100 text-green-800 border-green-200 flex items-center gap-1">
+                              <Award className="w-4 h-4" />
+                              {order.discountType} Discount
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       {/* Order Items Preview */}
-                      {/* Order Items Preview (show variant if available) */}
                       <div className="mb-4">
                         <p className="text-sm text-gray-600 mb-2">
                           {order.orderItems.length} item(s)
                         </p>
                         <div className="flex flex-wrap gap-2">
-                          {order.orderItems.slice(0, 3).map((item, index) => (
-                            <div
-                              key={index}
-                              className="flex items-center gap-2 bg-amber-50 px-3 py-1 rounded-lg"
-                            >
-                              <span className="text-xs font-medium text-amber-900">
-                                {item.quantity}x {item.product.name}
-                                {item.variantLabel ? ` (${item.variantLabel})` : ''}
-                              </span>
-                            </div>
-                          ))}
+                          {order.orderItems.slice(0, 3).map((item, index) => {
+                            const hasDiscount = item.discountApplied;
+                            return (
+                              <div
+                                key={index}
+                                className={`flex items-center gap-2 px-3 py-1 rounded-lg ${
+                                  hasDiscount ? 'bg-green-100' : 'bg-amber-50'
+                                }`}
+                              >
+                                <span className={`text-xs font-medium ${
+                                  hasDiscount ? 'text-green-800' : 'text-amber-900'
+                                }`}>
+                                  {item.quantity}x {item.product.name}
+                                  {item.variantLabel ? ` (${item.variantLabel})` : ''}
+                                  {hasDiscount && (
+                                    <span className="ml-1 inline-flex items-center">
+                                      <Percent className="w-3 h-3" />
+                                      20% OFF
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            );
+                          })}
                           {order.orderItems.length > 3 && (
                             <div className="flex items-center gap-2 bg-gray-100 px-3 py-1 rounded-lg">
                               <span className="text-xs font-medium text-gray-600">
@@ -249,11 +315,19 @@ export default function OrdersPage() {
                       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-amber-100">
                         <div>
                           <p className="text-sm text-gray-600">Total Amount</p>
-                          <p className="text-2xl font-bold text-amber-600">
-                            ₱{order.total.toFixed(2)}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-2xl font-bold text-amber-600">
+                              ₱{order.total.toFixed(2)}
+                            </p>
+                            {order.discountApplied && order.discountAmount && order.discountAmount > 0 && (
+                              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                                Saved ₱{order.discountAmount.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-gray-500">
                             Payment: {order.paymentMethod}
+                            {order.deliveryFee > 0 && ` • Delivery: ₱${order.deliveryFee.toFixed(2)}`}
                           </p>
                         </div>
                         <Button
@@ -343,8 +417,90 @@ export default function OrdersPage() {
                     <span className="font-semibold text-gray-700">Address:</span>{' '}
                     <span className="text-gray-900">{selectedOrder.deliveryAddress}</span>
                   </p>
+                  {selectedOrder.deliveryZipCode && (
+                    <p className="text-sm">
+                      <span className="font-semibold text-gray-700">ZIP Code:</span>{' '}
+                      <span className="text-gray-900">{selectedOrder.deliveryZipCode}</span>
+                    </p>
+                  )}
                 </div>
               </div>
+
+              {/* Order Notes */}
+              {selectedOrder.orderNotes && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                    Order Notes
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <p className="text-sm text-gray-700">{selectedOrder.orderNotes}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Discount Information */}
+              {selectedOrder.discountApplied && selectedOrder.discountDetails && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-5">
+                  <div className="flex items-start gap-3">
+                    <Award className="w-6 h-6 text-green-600 flex-shrink-0 mt-1" />
+                    <div className="flex-1">
+                      <h3 className="font-bold text-green-800 mb-2">
+                        {formatDiscountType(selectedOrder.discountType)} Applied
+                      </h3>
+                      
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Original Subtotal:</span>
+                          <span className="font-medium">₱{selectedOrder.subtotal.toFixed(2)}</span>
+                        </div>
+                        
+                        <div className="flex justify-between text-sm text-green-600">
+                          <span className="font-medium">Discount (20%):</span>
+                          <span>-₱{(selectedOrder.discountAmount || 0).toFixed(2)}</span>
+                        </div>
+
+                        {selectedOrder.discountDetails.appliedToItem && (
+                          <div className="mt-3 p-3 bg-green-100/50 rounded-lg">
+                            <p className="text-xs text-green-700 font-medium mb-1">
+                              Discount applied to highest-priced item:
+                            </p>
+                            <p className="text-sm text-green-800">
+                              {selectedOrder.discountDetails.appliedToItem.name}
+                              {selectedOrder.discountDetails.appliedToItem.variantLabel && 
+                                ` (${selectedOrder.discountDetails.appliedToItem.variantLabel})`
+                              }
+                            </p>
+                            <div className="flex justify-between text-xs text-green-600 mt-1">
+                              <span>Original: ₱{selectedOrder.discountDetails.appliedToItem.originalPrice.toFixed(2)}</span>
+                              <ChevronRight className="w-3 h-3" />
+                              <span>Discounted: ₱{selectedOrder.discountDetails.appliedToItem.discountedPrice.toFixed(2)}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {selectedOrder.discountDetails.itemsConsidered && (
+                          <details className="text-xs text-gray-500 mt-2">
+                            <summary className="cursor-pointer hover:text-gray-700">
+                              View all items considered for discount
+                            </summary>
+                            <div className="mt-2 space-y-1 pl-2">
+                              {selectedOrder.discountDetails.itemsConsidered.map((item, idx) => (
+                                <div key={idx} className="flex justify-between">
+                                  <span>
+                                    {item.name}
+                                    {item.variantLabel && ` (${item.variantLabel})`} x{item.quantity}
+                                  </span>
+                                  <span>₱{item.price.toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Order Items */}
               <div>
@@ -352,59 +508,108 @@ export default function OrdersPage() {
                   Order Items
                 </h3>
                 <div className="space-y-3">
-                  {selectedOrder.orderItems.map((item, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-4 bg-gray-50 rounded-lg p-4"
-                    >
-                      <div className="relative w-16 h-16 flex-shrink-0">
-                        <Image
-                          src={item.product.image}
-                          alt={item.product.name}
-                          fill
-                          className="object-cover rounded-lg"
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900">
-                          {item.product.name}
-                        </h4>
-                        {item.variantLabel && (
-                          <p className="text-xs text-gray-500">
-                            Variant: {item.variantLabel}
+                  {selectedOrder.orderItems.map((item, index) => {
+                    const itemTotal = calculateItemTotal(item.price, item.quantity);
+                    const hasDiscount = item.discountApplied;
+                    const discountedTotal = hasDiscount && item.discountedPrice ? item.discountedPrice : itemTotal;
+                    
+                    return (
+                      <div
+                        key={index}
+                        className={`flex items-center gap-4 rounded-lg p-4 ${
+                          hasDiscount ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
+                        }`}
+                      >
+                        <div className="relative w-16 h-16 flex-shrink-0">
+                          <Image
+                            src={item.product.image}
+                            alt={item.product.name}
+                            fill
+                            className="object-cover rounded-lg"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-semibold text-gray-900">
+                              {item.product.name}
+                            </h4>
+                            {hasDiscount && (
+                              <span className="bg-green-100 text-green-800 text-xs font-bold px-2 py-1 rounded">
+                                20% OFF
+                              </span>
+                            )}
+                          </div>
+                          {item.variantLabel && (
+                            <p className="text-xs text-gray-500">
+                              Variant: {item.variantLabel}
+                            </p>
+                          )}
+                          <p className="text-sm text-gray-600">
+                            Quantity: {item.quantity} × ₱{item.price.toFixed(2)}
                           </p>
-                        )}
-                        <p className="text-sm text-gray-600">
-                          Quantity: {item.quantity}
-                        </p>
+                          {hasDiscount && item.discountAmount && item.discountAmount > 0 && (
+                            <div className="mt-1 text-xs">
+                              <span className="text-green-600">
+                                Discount: -₱{item.discountAmount.toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <p className={`font-semibold ${
+                            hasDiscount ? 'text-green-600' : 'text-amber-600'
+                          }`}>
+                            ₱{hasDiscount ? discountedTotal.toFixed(2) : itemTotal.toFixed(2)}
+                          </p>
+                          {hasDiscount && (
+                            <p className="text-xs text-gray-500 line-through">
+                              ₱{itemTotal.toFixed(2)}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-amber-600">
-                          ₱{(item.price * item.quantity).toFixed(2)}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          ₱{item.price.toFixed(2)} each
-                        </p>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Order Summary */}
-              <div className="border-t border-amber-200 pt-6">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-gray-600">Payment Method:</span>
-                  <span className="font-semibold text-gray-900">
-                    {selectedOrder.paymentMethod}
-                  </span>
-                </div>
+              <div className="border-t border-amber-200 pt-6 space-y-2">
                 <div className="flex justify-between items-center">
+                  <span className="text-gray-600">Subtotal:</span>
+                  <span className="font-medium">₱{selectedOrder.subtotal.toFixed(2)}</span>
+                </div>
+                
+                {selectedOrder.deliveryFee > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-600">Delivery Fee:</span>
+                    <span className="font-medium">₱{selectedOrder.deliveryFee.toFixed(2)}</span>
+                  </div>
+                )}
+                
+                {selectedOrder.discountApplied && selectedOrder.discountAmount && selectedOrder.discountAmount > 0 && (
+                  <div className="flex justify-between items-center text-green-600">
+                    <span className="font-medium">Discount ({selectedOrder.discountType} 20%):</span>
+                    <span>-₱{selectedOrder.discountAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                
+                <div className="flex justify-between items-center pt-3 mt-3 border-t border-amber-200">
                   <span className="text-lg font-semibold text-gray-900">Total:</span>
                   <span className="text-2xl font-bold text-amber-600">
                     ₱{selectedOrder.total.toFixed(2)}
                   </span>
                 </div>
+                
+                <p className="text-xs text-gray-500 text-right">
+                  Payment Method: {selectedOrder.paymentMethod}
+                </p>
+                
+                {selectedOrder.discountApplied && selectedOrder.discountAmount && selectedOrder.discountAmount > 0 && (
+                  <p className="text-xs text-green-600 text-right mt-1">
+                    You saved ₱{selectedOrder.discountAmount.toFixed(2)} on this order!
+                  </p>
+                )}
               </div>
 
               {/* Close Button */}

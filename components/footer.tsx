@@ -3,7 +3,7 @@ import { Facebook, Instagram, Mail, Phone } from 'lucide-react';
 
 export function Footer() {
   return (
-    <footer className="bg-[#436B48] text-white">
+    <footer className="bg-amber-950 text-amber-50">
       <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* About */}
@@ -50,7 +50,7 @@ export function Footer() {
 
           {/* Contact */}
           <div className='text-white'>
-            <h3 className="text-lg font-bold mb-4 text-[#FFD966]">Contact Us</h3>
+            <h3 className="text-lg font-bold mb-4 text-amber-200">Contact Us</h3>
             <ul className="space-y-3 text-sm">
               <li className="flex items-center space-x-2">
                 <Mail className="w-4 h-4" />

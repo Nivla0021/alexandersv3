@@ -20,8 +20,8 @@ export function MenuClient({ products }: { products: Product[] }) {
     const query = search.toLowerCase();
     return products.filter(
       (product) =>
-        product.name.toLowerCase().includes(query) ||
-        product.category?.toLowerCase().includes(query)
+        product.name.toLowerCase().startsWith(query) ||
+        product.category?.toLowerCase().startsWith(query)
     );
   }, [search, products]);
 

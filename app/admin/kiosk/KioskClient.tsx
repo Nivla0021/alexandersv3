@@ -36,11 +36,15 @@ export default function KioskClient({
   const [toast, setToast] = useState<string | null>(null);
 
   // ---------- FILTER ----------
-  const filtered = products.filter(
-    (p) =>
-      p.name.toLowerCase().includes(query.toLowerCase()) ||
-      (p.category?.toLowerCase().includes(query.toLowerCase()) ?? false)
-  );
+  const filtered = products.filter((p) => {
+    const name = p.name.toLowerCase();
+    const category = p.category?.toLowerCase() ?? "";
+
+    return (
+      name.startsWith(query) ||
+      category.startsWith(query)
+    );
+  });
 
   // ---------- ORDER LOGIC ----------
   const addToOrder = (product: Product) => {

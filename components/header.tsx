@@ -37,7 +37,7 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-lg shadow-sm">
+    <header className="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-lg border-b border-amber-100 shadow-sm">
       <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between lg:h-16 py-2">
           {/* Logo */}
@@ -128,15 +128,6 @@ export function Header() {
                             <Package className="w-4 h-4" />
                             <span>My Orders</span>
                           </Link>
-                          {/*  added reservations link */}
-                          <Link
-                            href="/reservations"
-                            onClick={() => setUserMenuOpen(false)}
-                            className="w-full text-left px-4 py-2 text-sm text-amber-900 hover:bg-amber-50 flex items-center space-x-2"
-                          >
-                            <CalendarCheck className="w-4 h-4" />
-                            <span>Reservations</span>
-                          </Link>
                           <button
                             onClick={() => {
                               signOut({
@@ -168,7 +159,7 @@ export function Header() {
             {/* Cart */}
             <Link
               href="/cart"
-              className="relative p-2 rounded-lg bg-[#436B48] text-white hover:bg-amber-700 transition-colors"
+              className="relative p-2 rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition-colors"
             >
               <ShoppingCart className="w-5 h-5" />
 

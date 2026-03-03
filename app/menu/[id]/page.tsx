@@ -4,7 +4,7 @@ import { Header } from '@/components/header';
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { ArrowLeft, ShoppingCart, Minus, Plus } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, Minus, Plus, Store, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { useCartStore } from '@/lib/cart-store';
@@ -14,6 +14,8 @@ interface Variant {
   id: string;
   label: string;
   price: number;
+  inStorePrice: number | null;
+  onlinePrice: number | null;
 }
 
 interface Product {
@@ -24,7 +26,8 @@ interface Product {
   image: string;
   category: string | null;
   available: boolean;
-  variants: Variant[]; // <-- add variants array
+  productType: 'in-store' | 'online' | 'both';
+  variants: Variant[];
 }
 
 export default function ProductDetailPage() {
@@ -40,12 +43,14 @@ export default function ProductDetailPage() {
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const res = await fetch('/api/products');
+        // Fetch online products only
+        const res = await fetch('/api/products/online');
         const data: Product[] = await res.json();
         const foundProduct = data.find((p) => p.id === params.id);
+        
         if (foundProduct) {
           setProduct(foundProduct);
-          setSelectedVariant(foundProduct.variants[0] || null); // default to first variant
+          setSelectedVariant(foundProduct.variants[0] || null);
         }
         setLoading(false);
       } catch (error) {
@@ -66,8 +71,11 @@ export default function ProductDetailPage() {
         name: product.name,
         price: selectedVariant.price,
         image: product.image,
-        variantId: selectedVariant.id, // store selected variant ID
+        variantId: selectedVariant.id,
         variantLabel: selectedVariant.label,
+        // Store additional info for reference
+        productType: product.productType,
+        priceType: 'online', // Track that this is an online purchase
       },
       quantity
     );
@@ -101,10 +109,14 @@ export default function ProductDetailPage() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
         <h1 className="text-2xl font-bold mb-4">Product Not Found</h1>
+        <p className="text-gray-600 mb-6">This product may not be available for online ordering.</p>
         <Button onClick={() => router.push('/menu')}>Back to Menu</Button>
       </div>
     );
   }
+
+  // Calculate if product has any online variants
+  const hasOnlineVariants = product.variants.some(v => v.onlinePrice);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white">
@@ -139,11 +151,23 @@ export default function ProductDetailPage() {
             <div className="md:sticky md:top-28">
               <Card className="border-2 border-amber-200 shadow-lg">
                 <CardContent className="p-6 space-y-4">
-                  {product.category && (
-                    <span className="inline-block px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm font-medium">
-                      {product.category}
+                  {/* Category and Type */}
+                  <div className="flex flex-wrap gap-2">
+                    {product.category && (
+                      <span className="inline-block px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm font-medium">
+                        {product.category}
+                      </span>
+                    )}
+                    
+                    {/* Availability Badge */}
+                    <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                      product.available 
+                        ? 'bg-green-100 text-green-700' 
+                        : 'bg-red-100 text-red-700'
+                    }`}>
+                      {product.available ? 'In Stock' : 'Out of Stock'}
                     </span>
-                  )}
+                  </div>
 
                   <h1 className="text-4xl font-bold text-gray-900">
                     {product.name}
@@ -155,37 +179,48 @@ export default function ProductDetailPage() {
                   />
 
                   {/* Variant Selector */}
-                  {product.variants.length > 1 && (
-                    <div className="mt-2">
-                      <label className="text-gray-700 font-medium mb-1 block">
-                        Choose Variant
+                  {product.variants.length > 0 && (
+                    <div className="mt-4">
+                      <label className="text-gray-700 font-medium mb-2 block">
+                        Select Size/Variant
                       </label>
-                      <select
-                        value={selectedVariant?.id || ''}
-                        onChange={(e) => {
-                          const variant = product.variants.find(
-                            (v) => v.id === e.target.value
-                          );
-                          setSelectedVariant(variant || product.variants[0]);
-                        }}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2"
-                      >
-                        {product.variants.map((v) => (
-                          <option key={v.id} value={v.id}>
-                            {v.label} – ₱{v.price.toFixed(2)}
-                          </option>
+                      <div className="space-y-2">
+                        {product.variants.map((variant) => (
+                          <button
+                            key={variant.id}
+                            onClick={() => setSelectedVariant(variant)}
+                            className={`w-full p-3 border rounded-lg text-left transition-colors ${
+                              selectedVariant?.id === variant.id
+                                ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-200'
+                                : 'border-gray-200 hover:border-amber-300 hover:bg-amber-50/50'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium">{variant.label}</span>
+                              <span className="text-lg font-bold text-amber-600">
+                                ₱{variant.price.toFixed(2)}
+                              </span>
+                            </div>
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     </div>
                   )}
 
-                  <div className="flex items-baseline gap-2 mt-4">
-                    <span className="text-4xl font-bold text-amber-600">
-                      ₱{(selectedVariant?.price || product.price).toFixed(2)}
-                    </span>
-                  </div>
+                  {/* Price Display */}
+                  {selectedVariant && (
+                    <div className="flex items-baseline gap-2 mt-4">
+                      <span className="text-4xl font-bold text-amber-600">
+                        ₱{(selectedVariant.price * quantity).toFixed(2)}
+                      </span>
+                      <span className="text-gray-500">
+                        (₱{selectedVariant.price.toFixed(2)} each)
+                      </span>
+                    </div>
+                  )}
 
-                  {product.available ? (
+                  {/* Add to Cart Section */}
+                  {product.available && hasOnlineVariants ? (
                     <div className="space-y-4 pt-2">
                       {/* Quantity */}
                       <div className="flex items-center gap-4">
@@ -197,7 +232,8 @@ export default function ProductDetailPage() {
                             variant="outline"
                             size="icon"
                             onClick={decrementQuantity}
-                            className="rounded-full border-amber-300 hover:bg-amber-100"
+                            disabled={quantity <= 1}
+                            className="rounded-full border-amber-300 hover:bg-amber-100 disabled:opacity-50"
                           >
                             <Minus className="h-4 w-4" />
                           </Button>
@@ -209,30 +245,42 @@ export default function ProductDetailPage() {
                           <Button
                             variant="outline"
                             size="icon"
+                            disabled={quantity >= 99}
                             onClick={incrementQuantity}
-                            className="rounded-full border-amber-300 hover:bg-amber-100"
+                            className="rounded-full border-amber-300 hover:bg-amber-100 disabled:opacity-50"
                           >
                             <Plus className="h-4 w-4" />
                           </Button>
                         </div>
                       </div>
 
-                      {/* Add to Cart */}
+                      {/* Add to Cart Button */}
                       <Button
                         onClick={handleAddToCart}
+                        disabled={!selectedVariant}
                         size="lg"
-                        className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-semibold text-lg py-6 shadow-lg"
+                        className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-semibold text-lg py-6 shadow-lg disabled:opacity-50"
                       >
                         <ShoppingCart className="w-5 h-5 mr-2" />
                         Add to Cart – ₱
-                        {((selectedVariant?.price || product.price) * quantity).toFixed(2)}
+                        {(selectedVariant ? selectedVariant.price * quantity : 0).toFixed(2)}
                       </Button>
                     </div>
                   ) : (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-center">
-                      <p className="text-red-700 font-semibold">
-                        Currently Unavailable
+                    <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+                      <p className="text-red-700 font-semibold mb-2">
+                        Not Available for Online Order
                       </p>
+                      <p className="text-sm text-gray-600">
+                        This product is only available for in-store purchase.
+                      </p>
+                      <Button
+                        onClick={() => router.push('/menu')}
+                        variant="outline"
+                        className="mt-4"
+                      >
+                        Browse Other Products
+                      </Button>
                     </div>
                   )}
                 </CardContent>
@@ -246,6 +294,9 @@ export default function ProductDetailPage() {
           <div className="container mx-auto px-4 py-12">
             <Card className="border-2 border-amber-200 shadow-lg">
               <CardContent className="p-8 md:p-12">
+                <h2 className="text-2xl font-bold text-amber-800 mb-6">
+                  About This Product
+                </h2>
                 <div
                   className="prose prose-lg prose-amber max-w-none"
                   dangerouslySetInnerHTML={{ __html: product.recipe }}

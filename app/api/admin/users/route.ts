@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-options";
 
-// GET ALL USERS
+async function requireAdmin() {
+  const session = await getServerSession(authOptions);
+
+  if (!session || (session.user as any)?.role !== "admin") {
+    return null;
+  }
+
+  return session;
+}
+
+// GET ALL USERS (ADMIN ONLY)
 export async function GET() {
   try {
+    const session = await requireAdmin();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const users = await prisma.user.findMany({
       orderBy: { createdAt: "desc" },
     });
@@ -19,13 +36,17 @@ export async function GET() {
   }
 }
 
-// CREATE ADMIN / STORE-MANAGER
+// CREATE ADMIN / STORE-MANAGER (ADMIN ONLY)
 export async function POST(req: Request) {
   try {
+    const session = await requireAdmin();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await req.json();
     const { name, email, password, role, phone } = body;
 
-    // Required validation
     if (!name || !email || !password || !role) {
       return NextResponse.json(
         { error: "All required fields must be filled" },
@@ -33,7 +54,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Allow only admin and store-manager
     if (!["admin", "store-manager"].includes(role)) {
       return NextResponse.json(
         { error: "Invalid role. Only admin or store-manager allowed." },
@@ -41,7 +61,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check email duplicate
     const existing = await prisma.user.findUnique({
       where: { email },
     });
@@ -53,12 +72,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // Hash password
-    const hashed = await bcrypt.hash(password, 10);
+    const hashed = await bcrypt.hash(password, 12);
 
     const user = await prisma.user.create({
       data: {
-        name: name,
+        name,
         email,
         password: hashed,
         role,

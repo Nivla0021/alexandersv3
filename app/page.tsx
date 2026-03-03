@@ -92,7 +92,7 @@ async function getFeaturedProducts() {
       <Header />
       <main className="flex-1">
         {/* Hero Section */}
-        <section className="py-10 bg-[#ECF0ED]">
+        <section className="relative bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 py-6 lg:py-10">
           <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex flex-col items-center justify-center gap-10">
             
             <Carousel slides={slides}  autoSlideInterval={4000} />
@@ -124,7 +124,7 @@ async function getFeaturedProducts() {
           <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid md:grid-cols-3 gap-8">
               <div className="text-center p-6 py-10 rounded-xl bg-[#FCFFFB] shadow-[0.9px_1.8px_1.8px_-0.9px_rgba(0,0,0,0.25)] hover:shadow-lg transition-shadow">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-[#436B48] text-white rounded-full mb-4">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-600 text-white rounded-full mb-4">
                   <Truck className="w-8 h-8" />
                 </div>
                 <h3 className="text-xl font-medium mb-2">
@@ -134,19 +134,19 @@ async function getFeaturedProducts() {
                   Fast and reliable delivery across all Metro Manila areas
                 </p>
               </div>
-              <div className="text-center p-6 py-10 rounded-xl bg-[#4F7D55] hover:bg-[#436B48] shadow-[0.9px_1.8px_1.8px_-0.9px_rgba(0,0,0,0.25)] hover:shadow-lg transition-shadow">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-white text-[#436B48] rounded-full mb-4">
+              <div className="text-center p-6 py-10 rounded-xl bg-[#FCFFFB] shadow-[0.9px_1.8px_1.8px_-0.9px_rgba(0,0,0,0.25)] hover:shadow-lg transition-shadow">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-600 text-white rounded-full mb-4">
                   <Clock className="w-8 h-8" />
                 </div>
-                <h3 className="text-xl font-medium text-[#ffff] mb-2">
+                <h3 className="text-xl font-medium mb-2">
                   Fresh Daily
                 </h3>
-                <p className="text-white/70">
+                <p className="text-[#535353]">
                   Made fresh in our cloud kitchen with quality ingredients
                 </p>
               </div>
               <div className="text-center p-6 py-10 rounded-xl bg-[#FCFFFB] shadow-[0.9px_1.8px_1.8px_-0.9px_rgba(0,0,0,0.25)] hover:shadow-lg transition-shadow">
-                <div className="inline-flex items-center justify-center w-16 h-16 bg-[#436B48] text-white rounded-full mb-4">
+                <div className="inline-flex items-center justify-center w-16 h-16 bg-amber-600 text-white rounded-full mb-4">
                   <Star className="w-8 h-8" />
                 </div>
                 <h3 className="text-xl font-medium text-[#333333] mb-2">
@@ -172,35 +172,18 @@ async function getFeaturedProducts() {
         >
 					<div className="2xl:max-w-[28%] xl:max-w-[40%] lg:max-w-[50%] md:max-w-[65%] sm:max-w-[80%] m-10 lg:my-32 md:my-24 my-16 bg-white/70 rounded-lg">
 						<div className='p-12 sm:px-20 px-10 flex flex-col justify-center items-center text-center sm:gap-5 gap-4'>
-							<p className="text-xl md:text-2xl font-bold text-[#436B48]">Ready to Experience Authentic Filipino Flavors?</p>
+							<p className="text-xl md:text-2xl font-bold text-amber-900">Ready to Experience Authentic Filipino Flavors?</p>
 							<p>Order now and get your favorites delivered fresh to your doorstep</p>
 							<Link
 								href="/menu"
-								className="inline-flex items-center space-x-2 px-8 py-3 text-white bg-[#4F7D55] hover:bg-[#436B48] rounded-lg transition-colors text-sm"
+								className="inline-flex items-center space-x-2 px-8 py-3 text-white bg-amber-800 hover:bg-amber-900 rounded-lg transition-colors text-sm"
 							>
 								<span>Browse Menu</span>
 								{/* <ArrowRight className="w-6 h-6" /> */}
 							</Link>
 						</div>
 					</div>
-        </section>
-        {/* <section className="py-20 bg-gradient-to-r from-amber-600 to-orange-600">
-          <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-            <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">
-              Ready to Experience Authentic Filipino Flavors?
-            </h2>
-            <p className="text-xl text-amber-50 mb-8">
-              Order now and get your favorites delivered fresh to your doorstep
-            </p>
-            <Link
-              href="/menu"
-              className="inline-flex items-center space-x-2 px-8 py-4 bg-white text-amber-600 rounded-lg hover:bg-[#FCFFFB] transition-colors shadow-lg font-bold text-lg"
-            >
-              <span>Browse Menu</span>
-              <ArrowRight className="w-6 h-6" />
-            </Link>
-          </div>
-        </section> */}
+        </section> 
       </main>
       <Footer />
     </div>

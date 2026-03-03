@@ -5,15 +5,15 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { ArrowLeft, Plus, Edit, Trash2, Package } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Package, Store, Globe } from 'lucide-react';
 import { useRef } from 'react';
 import { Editor } from "@tinymce/tinymce-react";
-
 
 interface ProductVariant {
   id: string;
   label: string;
-  price: number;
+  inStorePrice: number | null;
+  onlinePrice: number | null;
 }
 
 interface Product {
@@ -25,9 +25,14 @@ interface Product {
   category: string | null;
   available: boolean;
   featured: boolean;
-
+  productType: 'in-store' | 'online' | 'both';
   variants: ProductVariant[];
 }
+
+type Category = {
+  value: string;
+  label: string;
+};
 
 export default function AdminProductsPage() {
   const { data: session, status } = useSession() || {};
@@ -37,6 +42,7 @@ export default function AdminProductsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const formRef = useRef<HTMLDivElement | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -45,26 +51,26 @@ export default function AdminProductsPage() {
     category: '',
     available: true,
     featured: false,
-    variants: [{ label: 'Regular', price: '' }],
+    productType: 'both' as 'in-store' | 'online' | 'both',
+    variants: [{ 
+      label: 'Regular', 
+      inStorePrice: '', 
+      onlinePrice: '' 
+    }],
   });
 
   // Search state
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedTerm, setDebouncedTerm] = useState('');
-  const categories = [
-    { value: 'main-dishes', label: 'Main Dishes' },
-    { value: 'noodles', label: 'Noodles' },
-    { value: 'appetizers', label: 'Appetizers' },
-    { value: 'soups', label: 'Soups' },
-    { value: 'beverages', label: 'Beverages' },
-    { value: 'desserts', label: 'Desserts' },
-  ];
+  
+  // Filter state for product type
+  const [typeFilter, setTypeFilter] = useState<'all' | 'in-store' | 'online' | 'both'>('all');
 
   // Debounce effect
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedTerm(searchTerm);
-    }, 300); // 300ms delay
+    }, 300);
 
     return () => clearTimeout(handler);
   }, [searchTerm]);
@@ -82,6 +88,7 @@ export default function AdminProductsPage() {
     }
 
     fetchProducts();
+    loadCategories();
   }, [status, session, router]);
 
   const fetchProducts = async () => {
@@ -91,13 +98,22 @@ export default function AdminProductsPage() {
 
       const data = await response.json();
 
-      // Map variants to ensure price is string for the form
+      // Map variants to ensure prices are strings for the form
       const productsWithVariants = (data ?? []).map((product: any) => ({
         ...product,
+        // Map database 'in_store' to frontend 'in-store'
+        productType: product.productType === 'in_store' 
+          ? 'in-store' 
+          : product.productType || 'both',
         variants: product.variants?.map((v: any) => ({
           ...v,
-          price: v.price.toString(), // convert to string for input fields
-        })) ?? [{ label: 'Regular', price: '' }], // default if empty
+          inStorePrice: v.inStorePrice?.toString() || '',
+          onlinePrice: v.onlinePrice?.toString() || '',
+        })) ?? [{ 
+          label: 'Regular', 
+          inStorePrice: '', 
+          onlinePrice: '' 
+        }],
       }));
 
       setProducts(productsWithVariants);
@@ -108,8 +124,69 @@ export default function AdminProductsPage() {
     }
   };
 
+  async function loadCategories() {
+    try {
+      const res = await fetch('/api/admin/settings/categories');
+      const data = await res.json();
+      if (data?.value && Array.isArray(data.value)) {
+        const mapped = data.value.map((item: any) => ({
+          value: item.id,
+          label: item.label,
+        }));
+        setCategories(mapped);
+      }
+    } catch (error) {
+      console.error('Failed to fetch categories:', error);
+    }
+  }
+
+  const validateForm = () => {
+    // Check if product has a name
+    if (!formData.name.trim()) {
+      alert('Please enter a product name');
+      return false;
+    }
+
+    // Check if at least one variant exists with required prices
+    if (formData.variants.length === 0) {
+      alert('Please add at least one variant');
+      return false;
+    }
+
+    // Check if each variant has required prices based on product type
+    for (const variant of formData.variants) {
+      if (!variant.label.trim()) {
+        alert('Please enter a label for all variants');
+        return false;
+      }
+
+      if (formData.productType === 'both') {
+        if (!variant.inStorePrice || !variant.onlinePrice) {
+          alert('For "Both" product type, each variant must have both in-store and online prices');
+          return false;
+        }
+      } else if (formData.productType === 'in-store') {
+        if (!variant.inStorePrice) {
+          alert('For in-store products, each variant must have an in-store price');
+          return false;
+        }
+      } else if (formData.productType === 'online') {
+        if (!variant.onlinePrice) {
+          alert('For online products, each variant must have an online price');
+          return false;
+        }
+      }
+    }
+
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
 
     try {
       const formPayload = new FormData();
@@ -120,7 +197,15 @@ export default function AdminProductsPage() {
       formPayload.append('category', formData.category || '');
       formPayload.append('available', formData.available ? 'true' : 'false');
       formPayload.append('featured', formData.featured ? 'true' : 'false');
-      formPayload.append('variants', JSON.stringify(formData.variants));
+      formPayload.append('productType', formData.productType);
+      
+      // Transform variants to include both prices
+      const variantsForApi = formData.variants.map(v => ({
+        label: v.label,
+        inStorePrice: v.inStorePrice ? parseFloat(v.inStorePrice) : null,
+        onlinePrice: v.onlinePrice ? parseFloat(v.onlinePrice) : null,
+      }));
+      formPayload.append('variants', JSON.stringify(variantsForApi));
 
       // If image is a File, append it; if it's a string (editing), skip
       if (formData.image && typeof formData.image !== 'string') {
@@ -144,14 +229,17 @@ export default function AdminProductsPage() {
           category: '',
           available: true,
           featured: false,
-          variants: [{ label: 'Regular', price: '' }],
+          productType: 'both',
+          variants: [{ label: 'Regular', inStorePrice: '', onlinePrice: '' }],
         });
       } else {
         const data = await response.json();
         console.error('Error saving product:', data.error);
+        alert('Error saving product: ' + data.error);
       }
     } catch (error) {
       console.error('Error saving product:', error);
+      alert('Error saving product');
     }
   };
 
@@ -165,9 +253,12 @@ export default function AdminProductsPage() {
       category: product.category || '',
       available: product.available,
       featured: product.featured,
+      // Ensure product type is in the correct format for the form
+      productType: product.productType === 'in_store' ? 'in-store' : product.productType || 'both',
       variants: product.variants.map((v) => ({
         label: v.label,
-        price: v.price.toString(),
+        inStorePrice: v.inStorePrice?.toString() || '',
+        onlinePrice: v.onlinePrice?.toString() || '',
       })),
     });
     setShowForm(true);
@@ -231,12 +322,16 @@ export default function AdminProductsPage() {
     }
   };
 
-  // Filtered products using debounced term
+  // Filtered products using debounced term and type filter
   const filteredProducts = products.filter((product) => {
     const term = debouncedTerm.toLowerCase();
     const nameMatch = product.name.toLowerCase().includes(term);
     const categoryMatch = product.category?.toLowerCase().includes(term);
-    return nameMatch || categoryMatch;
+    const searchMatch = nameMatch || categoryMatch;
+    
+    // Apply type filter
+    if (typeFilter === 'all') return searchMatch;
+    return searchMatch && product.productType === typeFilter;
   });
 
   if (status === 'loading' || loading) {
@@ -274,7 +369,8 @@ export default function AdminProductsPage() {
                   category: '',
                   available: true,
                   featured: false,
-                  variants: [{ label: 'Regular', price: '' }], // initialize one variant
+                  productType: 'both',
+                  variants: [{ label: 'Regular', inStorePrice: '', onlinePrice: '' }],
                 });
               }}
               className="flex items-center space-x-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors"
@@ -288,9 +384,7 @@ export default function AdminProductsPage() {
 
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 pb-8">
         {showForm && (
-          <div className="bg-white rounded-xl shadow-md p-6 mb-8"
-            ref={formRef}
-          >
+          <div className="bg-white rounded-xl shadow-md p-6 mb-8" ref={formRef}>
             <h2 className="text-xl font-bold text-amber-900 mb-4">
               {editingProduct ? 'Edit Product' : 'Add New Product'}
             </h2>
@@ -310,40 +404,82 @@ export default function AdminProductsPage() {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none"
                   />
                 </div>
+
+                {/* Product Type Selection */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Pricing Options *
+                    Product Type *
                   </label>
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="productType"
+                        value="both"
+                        checked={formData.productType === 'both'}
+                        onChange={(e) => setFormData({ 
+                          ...formData, 
+                          productType: e.target.value as 'in-store' | 'online' | 'both' 
+                        })}
+                        className="w-4 h-4 text-amber-600"
+                      />
+                      <span className="text-sm text-gray-700">Both</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="productType"
+                        value="in-store"
+                        checked={formData.productType === 'in-store'}
+                        onChange={(e) => setFormData({ 
+                          ...formData, 
+                          productType: e.target.value as 'in-store' | 'online' | 'both' 
+                        })}
+                        className="w-4 h-4 text-amber-600"
+                      />
+                      <span className="text-sm text-gray-700">In-store Only</span>
+                    </label>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="productType"
+                        value="online"
+                        checked={formData.productType === 'online'}
+                        onChange={(e) => setFormData({ 
+                          ...formData, 
+                          productType: e.target.value as 'in-store' | 'online' | 'both' 
+                        })}
+                        className="w-4 h-4 text-amber-600"
+                      />
+                      <span className="text-sm text-gray-700">Online Only</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
 
-                  <div className="space-y-3">
-                    {formData.variants.map((variant, index) => (
-                      <div key={index} className="flex gap-2">
+              {/* Variants Section with Dual Prices */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  Pricing Options *
+                </label>
+
+                <div className="space-y-4">
+                  {formData.variants.map((variant, index) => (
+                    <div key={index} className="border p-4 rounded-lg bg-gray-50">
+                      <div className="flex gap-2 mb-3">
                         <input
                           type="text"
-                          placeholder="Label (e.g. Regular, 6 pcs, Large)"
+                          placeholder="Label (e.g. Regular, 6 pcs)"
                           value={variant.label}
                           onChange={(e) => {
                             const updated = [...formData.variants];
                             updated[index].label = e.target.value;
                             setFormData({ ...formData, variants: updated });
                           }}
-                          className="w-1/2 px-3 py-2 border rounded-lg"
+                          className="flex-1 px-3 py-2 border rounded-lg"
                           required
                         />
-
-                        <input
-                          type="number"
-                          placeholder="Price"
-                          value={variant.price}
-                          onChange={(e) => {
-                            const updated = [...formData.variants];
-                            updated[index].price = e.target.value;
-                            setFormData({ ...formData, variants: updated });
-                          }}
-                          className="w-1/2 px-3 py-2 border rounded-lg"
-                          required
-                        />
-
+                        
                         {formData.variants.length > 1 && (
                           <button
                             type="button"
@@ -351,27 +487,79 @@ export default function AdminProductsPage() {
                               const updated = formData.variants.filter((_, i) => i !== index);
                               setFormData({ ...formData, variants: updated });
                             }}
-                            className="px-3 bg-red-500 text-white rounded-lg"
+                            className="px-3 bg-red-500 text-white rounded-lg hover:bg-red-600"
                           >
                             ✕
                           </button>
                         )}
                       </div>
-                    ))}
 
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFormData({
-                          ...formData,
-                          variants: [...formData.variants, { label: '', price: '' }],
-                        })
-                      }
-                      className="text-sm text-amber-700 hover:underline"
-                    >
-                      + Add Variant
-                    </button>
-                  </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* In-store Price */}
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">
+                            In-store Price {formData.productType !== 'online' ? '*' : '(optional)'}
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={variant.inStorePrice}
+                            onChange={(e) => {
+                              const updated = [...formData.variants];
+                              updated[index].inStorePrice = e.target.value;
+                              setFormData({ ...formData, variants: updated });
+                            }}
+                            className={`w-full px-3 py-2 border rounded-lg ${
+                              formData.productType === 'online' ? 'bg-gray-100' : ''
+                            }`}
+                            required={formData.productType !== 'online'}
+                            disabled={formData.productType === 'online'}
+                          />
+                        </div>
+
+                        {/* Online Price */}
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">
+                            Online Price {formData.productType !== 'in-store' ? '*' : '(optional)'}
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={variant.onlinePrice}
+                            onChange={(e) => {
+                              const updated = [...formData.variants];
+                              updated[index].onlinePrice = e.target.value;
+                              setFormData({ ...formData, variants: updated });
+                            }}
+                            className={`w-full px-3 py-2 border rounded-lg ${
+                              formData.productType === 'in-store' ? 'bg-gray-100' : ''
+                            }`}
+                            required={formData.productType !== 'in-store'}
+                            disabled={formData.productType === 'in-store'}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData({
+                        ...formData,
+                        variants: [...formData.variants, { 
+                          label: '', 
+                          inStorePrice: '', 
+                          onlinePrice: '' 
+                        }],
+                      })
+                    }
+                    className="text-sm text-amber-700 hover:underline"
+                  >
+                    + Add Variant
+                  </button>
                 </div>
               </div>
 
@@ -379,53 +567,53 @@ export default function AdminProductsPage() {
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                   Description *
                 </label>
-                  <Editor
-                    apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY}
-                    value={formData.description}
-                    onEditorChange={(content: string) =>
-                      setFormData({ ...formData, description: content })
-                    }
-                    init={{
-                      height: 300,
-                      menubar: false,
-                      plugins: [
-                        "lists",
-                        "link",
-                        "autolink",
-                        "preview",
-                        "code",
-                      ],
-                      toolbar:
-                        "undo redo | bold italic underline | bullist numlist | link | code",
-                      content_style:
-                        "body { font-family: Inter, sans-serif; font-size: 14px }",
-                    }}
-                  />
+                <Editor
+                  apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY}
+                  value={formData.description}
+                  onEditorChange={(content: string) =>
+                    setFormData({ ...formData, description: content })
+                  }
+                  init={{
+                    height: 300,
+                    menubar: false,
+                    plugins: [
+                      "lists",
+                      "link",
+                      "autolink",
+                      "preview",
+                      "code",
+                    ],
+                    toolbar:
+                      "undo redo | bold italic underline | bullist numlist | link | code",
+                    content_style:
+                      "body { font-family: Inter, sans-serif; font-size: 14px }",
+                  }}
+                />
               </div>
 
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-2">
-                  Benefits *
+                  Benefits / Recipe
                 </label>
-                  <Editor
-                    apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY}
-                    value={formData.recipe}
-                    onEditorChange={(content: string) =>
-                      setFormData({ ...formData, recipe: content })
-                    }
-                    init={{
-                      height: 300,
-                      menubar: false,
-                      plugins: [
-                        "lists",
-                        "autolink",
-                        "preview",
-                        "code",
-                      ],
-                      toolbar:
-                        "undo redo | bold italic | bullist numlist | code",
-                    }}
-                  />
+                <Editor
+                  apiKey={process.env.NEXT_PUBLIC_TINYMCE_API_KEY}
+                  value={formData.recipe}
+                  onEditorChange={(content: string) =>
+                    setFormData({ ...formData, recipe: content })
+                  }
+                  init={{
+                    height: 300,
+                    menubar: false,
+                    plugins: [
+                      "lists",
+                      "autolink",
+                      "preview",
+                      "code",
+                    ],
+                    toolbar:
+                      "undo redo | bold italic | bullist numlist | code",
+                  }}
+                />
               </div>
 
               <div className="grid md:grid-cols-2 gap-4">
@@ -437,7 +625,7 @@ export default function AdminProductsPage() {
                   <input
                     type="file"
                     accept="image/*"
-                    required={!editingProduct} // required if adding new product
+                    required={!editingProduct}
                     onChange={(e) => {
                       if (e.target.files && e.target.files[0]) {
                         setFormData({ ...formData, image: e.target.files[0] as any });
@@ -478,7 +666,6 @@ export default function AdminProductsPage() {
                     <option value="" disabled>
                       Select category
                     </option>
-
                     {categories.map((cat) => (
                       <option key={cat.value} value={cat.value}>
                         {cat.label}
@@ -488,35 +675,36 @@ export default function AdminProductsPage() {
                 </div>
               </div>
 
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="available"
-                  checked={formData.available}
-                  onChange={(e) =>
-                    setFormData({ ...formData, available: e.target.checked })
-                  }
-                  className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
-                />
-                <label htmlFor="available" className="ml-2 text-sm text-gray-700">
-                  Available for order
-                </label>
+              <div className="flex items-center space-x-6">
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="available"
+                    checked={formData.available}
+                    onChange={(e) =>
+                      setFormData({ ...formData, available: e.target.checked })
+                    }
+                    className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                  />
+                  <label htmlFor="available" className="ml-2 text-sm text-gray-700">
+                    Available for order
+                  </label>
+                </div>
+                <div className="flex items-center">
+                  <input
+                    type="checkbox"
+                    id="featured"
+                    checked={formData.featured}
+                    onChange={(e) =>
+                      setFormData({ ...formData, featured: e.target.checked })
+                    }
+                    className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
+                  />
+                  <label htmlFor="featured" className="ml-2 text-sm text-gray-700">
+                    Featured Product
+                  </label>
+                </div>
               </div>
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  id="featured"
-                  checked={formData.featured}
-                  onChange={(e) =>
-                    setFormData({ ...formData, featured: e.target.checked })
-                  }
-                  className="w-4 h-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
-                />
-                <label htmlFor="featured" className="ml-2 text-sm text-gray-700">
-                  Featured Product
-                </label>
-              </div>
-
 
               <div className="flex space-x-4">
                 <button
@@ -542,18 +730,36 @@ export default function AdminProductsPage() {
 
         {/* Products List */}
         <div className="bg-white rounded-xl shadow-md">
-          <div className="p-6 border-b border-gray-200 flex items-center justify-between">
-            <h2 className="text-xl font-bold text-amber-900 flex items-center">
-              <Package className="w-6 h-6 mr-2" />
-              Products ({filteredProducts.length})
-            </h2>
-            <input
-              type="text"
-              placeholder="Search by name or category"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none w-64"
-            />
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <h2 className="text-xl font-bold text-amber-900 flex items-center">
+                <Package className="w-6 h-6 mr-2" />
+                Products ({filteredProducts.length})
+              </h2>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                {/* Type Filter */}
+                <select
+                  value={typeFilter}
+                  onChange={(e) => setTypeFilter(e.target.value as any)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none bg-white"
+                >
+                  <option value="all">All Types</option>
+                  <option value="both">Both</option>
+                  <option value="in-store">In-store Only</option>
+                  <option value="online">Online Only</option>
+                </select>
+
+                {/* Search Input */}
+                <input
+                  type="text"
+                  placeholder="Search by name or category"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-500 outline-none w-full sm:w-64"
+                />
+              </div>
+            </div>
           </div>
 
           <div className="divide-y divide-gray-200">
@@ -585,28 +791,59 @@ export default function AdminProductsPage() {
                           </h3>
 
                           <div
-                            className="text-sm text-gray-600 mt-1 prose prose-sm max-w-none"
+                            className="text-sm text-gray-600 mt-1 prose prose-sm max-w-none line-clamp-2"
                             dangerouslySetInnerHTML={{
                               __html: product?.description ?? '',
                             }}
                           />
 
-                          <div
-                            className="text-sm text-gray-600 mt-1 prose prose-sm max-w-none"
-                            dangerouslySetInnerHTML={{
-                              __html: product?.recipe ?? '',
-                            }}
-                          />
-
-                          {/* Variants Display */}
-                          <div className="flex flex-wrap items-center space-x-4 mt-2">
-                            {product?.variants.map((variant) => (
-                              <span
-                                key={variant.id}
-                                className="text-lg font-bold text-amber-600"
-                              >
-                                {variant.label}: ₱{variant.price}
+                          {/* Variants Display with Type Badge and Price Split */}
+                          <div className="flex flex-wrap items-center gap-2 mt-3">
+                            {/* Product Type Badge */}
+                            <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${
+                              product.productType === 'both' 
+                                ? 'bg-purple-100 text-purple-700'
+                                : product.productType === 'in-store'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-green-100 text-green-700'
+                            }`}>
+                              {product.productType === 'both' ? (
+                                <>
+                                  <Store className="w-3 h-3" />
+                                  <Globe className="w-3 h-3" />
+                                </>
+                              ) : product.productType === 'in-store' ? (
+                                <Store className="w-3 h-3" />
+                              ) : (
+                                <Globe className="w-3 h-3" />
+                              )}
+                              <span>
+                                {product.productType === 'both' ? 'In-store & Online' : 
+                                 product.productType === 'in-store' ? 'In-store Only' : 'Online Only'}
                               </span>
+                            </span>
+
+                            {/* Variant Prices */}
+                            {product?.variants.map((variant) => (
+                              <div key={variant.id} className="flex flex-wrap items-center gap-2">
+                                <span className="text-sm font-medium text-gray-700">
+                                  {variant.label}:
+                                </span>
+                                
+                                {(product.productType === 'both' || product.productType === 'in-store') && variant.inStorePrice && (
+                                  <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded flex items-center gap-1">
+                                    <Store className="w-3 h-3" />
+                                    ₱{variant.inStorePrice}
+                                  </span>
+                                )}
+                                
+                                {(product.productType === 'both' || product.productType === 'online') && variant.onlinePrice && (
+                                  <span className="text-xs bg-green-50 text-green-700 px-2 py-1 rounded flex items-center gap-1">
+                                    <Globe className="w-3 h-3" />
+                                    ₱{variant.onlinePrice}
+                                  </span>
+                                )}
+                              </div>
                             ))}
 
                             {product?.category && (
@@ -630,8 +867,8 @@ export default function AdminProductsPage() {
                               onClick={() => toggleFeatured(product)}
                               className={`text-xs px-3 py-1 rounded-full font-medium ${
                                 product?.featured
-                                  ? 'bg-green-100 text-blue-700'
-                                  : 'bg-red-100 text-red-700'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-gray-100 text-gray-700'
                               }`}
                             >
                               {product?.featured ? 'Featured' : 'Not Featured'}
