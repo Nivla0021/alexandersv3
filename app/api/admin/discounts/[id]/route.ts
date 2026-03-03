@@ -6,21 +6,22 @@ import { sendDiscountApprovalEmail, sendDiscountRejectionEmail } from '@/lib/ema
 
 export const dynamic = 'force-dynamic';
 
-interface Params {
-  params: {
-    id: string;
-  };
-}
-
-export async function GET(req: NextRequest, { params }: Params) {
+/* =========================
+   GET DISCOUNT APPLICATION
+========================= */
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    // Check authentication and admin role
     const session = await getServerSession(authOptions);
-    if (!session || !session.user || (session?.user as any)?.role !== 'admin') {
+
+    if (!session || !session.user || (session.user as any)?.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    // ✅ Next.js 15 requires awaiting params
+    const { id } = await context.params;
 
     const application = await prisma.discountApproval.findUnique({
       where: { id },
@@ -56,15 +57,21 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 }
 
-export async function PATCH(req: NextRequest, { params }: Params) {
+/* =========================
+   PATCH DISCOUNT APPLICATION
+========================= */
+export async function PATCH(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
-    // Check authentication and admin role
     const session = await getServerSession(authOptions);
-    if (!session || !session.user || (session?.user as any)?.role !== 'admin') {
+
+    if (!session || !session.user || (session.user as any)?.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id } = params;
+    const { id } = await context.params;
     const { action, rejectionReason } = await req.json();
 
     if (!action || !['APPROVE', 'REJECT'].includes(action)) {
@@ -73,9 +80,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     const application = await prisma.discountApproval.findUnique({
       where: { id },
-      include: {
-        user: true,
-      },
+      include: { user: true },
     });
 
     if (!application) {
@@ -83,12 +88,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
 
     if (application.status !== 'PENDING') {
-      return NextResponse.json({ error: 'This application has already been processed' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'This application has already been processed' },
+        { status: 400 }
+      );
     }
 
-    // Start a transaction to update both the application and the user
     const result = await prisma.$transaction(async (tx) => {
-      // Update the application
       const updatedApplication = await tx.discountApproval.update({
         where: { id },
         data: {
@@ -96,11 +102,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           isApproved: action === 'APPROVE',
           reviewedBy: session.user.id,
           reviewedAt: new Date(),
-          ...(action === 'REJECT' && rejectionReason ? { rejectionReason } : {}),
+          ...(action === 'REJECT' && rejectionReason
+            ? { rejectionReason }
+            : {}),
         },
       });
 
-      // If approved, update the user's discount status (ONE-TIME APPROVAL)
       if (action === 'APPROVE') {
         await tx.user.update({
           where: { id: application.userId },
@@ -116,7 +123,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       return updatedApplication;
     });
 
-    // Send email notification based on action
+    // Send email (non-blocking)
     try {
       if (action === 'APPROVE') {
         await sendDiscountApprovalEmail({
@@ -130,20 +137,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           to: application.user.email,
           userName: application.user.name || 'Valued Customer',
           discountType: application.discountType || undefined,
-          rejectionReason: rejectionReason,
+          rejectionReason,
           applicationId: id,
         });
       }
     } catch (emailError) {
-      // Log email error but don't fail the request
       console.error('Failed to send notification email:', emailError);
     }
 
     return NextResponse.json({
       success: true,
-      message: action === 'APPROVE' 
-        ? 'Discount application approved. User will now automatically get discount on all future orders.' 
-        : 'Discount application rejected.',
+      message:
+        action === 'APPROVE'
+          ? 'Discount application approved. User will now automatically get discount on all future orders.'
+          : 'Discount application rejected.',
       application: result,
     });
 
