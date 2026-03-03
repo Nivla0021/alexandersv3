@@ -1,11 +1,8 @@
+// api/admin/users/[id]/route.ts
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
-
-interface Params {
-  params: { id: string };
-}
 
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
@@ -18,16 +15,21 @@ async function requireAdmin() {
 }
 
 // DELETE USER (ADMIN ONLY)
-export async function DELETE(req: Request, { params }: Params) {
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
   try {
     const session = await requireAdmin();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const id = params.id;
+    // ✅ Next.js 15 requires awaiting params
+    const { id } = await context.params;
 
     const user = await prisma.user.findUnique({ where: { id } });
+
     if (!user) {
       return NextResponse.json(
         { error: "User not found" },
@@ -46,6 +48,7 @@ export async function DELETE(req: Request, { params }: Params) {
     await prisma.user.delete({ where: { id } });
 
     return NextResponse.json({ message: "User deleted successfully" });
+
   } catch (err) {
     console.error("DELETE USER ERROR:", err);
     return NextResponse.json(

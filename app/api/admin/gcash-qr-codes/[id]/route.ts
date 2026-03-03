@@ -2,11 +2,15 @@
 import { NextResponse } from 'next/server';
 import { prisma } from "@/lib/prisma";
 
+/* =========================
+   UPDATE QR CODE
+========================= */
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
     const body = await request.json();
     const { name, imageUrl, isActive, amount, description } = body;
 
@@ -15,14 +19,14 @@ export async function PUT(
       await prisma.gCashQRCode.updateMany({
         where: { 
           isActive: true,
-          NOT: { id: params.id }
+          NOT: { id }
         },
         data: { isActive: false }
       });
     }
 
     const qrCode = await prisma.gCashQRCode.update({
-      where: { id: params.id },
+      where: { id },
       data: {
         name,
         imageUrl,
@@ -33,6 +37,7 @@ export async function PUT(
     });
 
     return NextResponse.json(qrCode);
+
   } catch (error) {
     console.error('Error updating QR code:', error);
     return NextResponse.json(
@@ -42,16 +47,22 @@ export async function PUT(
   }
 }
 
+/* =========================
+   DELETE QR CODE
+========================= */
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await context.params;
+
     await prisma.gCashQRCode.delete({
-      where: { id: params.id }
+      where: { id }
     });
 
     return NextResponse.json({ success: true });
+
   } catch (error) {
     console.error('Error deleting QR code:', error);
     return NextResponse.json(
