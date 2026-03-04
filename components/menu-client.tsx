@@ -10,7 +10,13 @@ type Product = {
   image: string;
   available: boolean;
   category?: string;
-  variants: { id: string; label: string; price: number }[];
+  variants: {
+    id: string;
+    label: string;
+    inStorePrice: number | null;
+    onlinePrice: number | null;
+    price: number;
+  }[];
 };
 
 export function MenuClient({ products }: { products: Product[] }) {
@@ -18,11 +24,11 @@ export function MenuClient({ products }: { products: Product[] }) {
 
   const filteredProducts = useMemo(() => {
     const query = search.toLowerCase();
-    return products.filter(
-      (product) =>
-        product.name.toLowerCase().startsWith(query) ||
-        product.category?.toLowerCase().startsWith(query)
-    );
+    return products.filter((product) => {
+      const nameMatch = product.name.toLowerCase().includes(query);
+      const categoryMatch = product.category?.toLowerCase().includes(query) ?? false;
+      return nameMatch || categoryMatch;
+    });
   }, [search, products]);
 
   return (
@@ -40,9 +46,7 @@ export function MenuClient({ products }: { products: Product[] }) {
 
       {filteredProducts.length === 0 ? (
         <div className="text-center py-20">
-          <p className="text-xl text-gray-600">
-            No products match your search.
-          </p>
+          <p className="text-xl text-gray-600">No products match your search.</p>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">

@@ -181,16 +181,20 @@ export async function POST(request: Request) {
       // Create maps for quick lookup
       const productMap = new Map(products.map(p => [p.id, p]));
       
-      // Create variant price map - use onlinePrice for online orders
+      // Create variant price map with proper null checking
       const variantPriceMap = new Map<string, number>();
       products.forEach(product => {
         product.variants.forEach(variant => {
           // For online orders, use onlinePrice
           if (orderSource === 'ONLINE') {
-            variantPriceMap.set(variant.id, variant.onlinePrice);
+            if (variant.onlinePrice !== null) {
+              variantPriceMap.set(variant.id, variant.onlinePrice);
+            }
           } else {
             // For kiosk/offline, use inStorePrice
-            variantPriceMap.set(variant.id, variant.inStorePrice);
+            if (variant.inStorePrice !== null) {
+              variantPriceMap.set(variant.id, variant.inStorePrice);
+            }
           }
         });
       });
@@ -216,9 +220,9 @@ export async function POST(request: Request) {
         
         if (clientItem.variantId) {
           // If item has a variant, get price from variant
-          price = variantPriceMap.get(clientItem.variantId);
+          price = variantPriceMap.get(clientItem.variantId) || null;
           
-          if (price === undefined || price === null) {
+          if (price === null) {
             return NextResponse.json(
               { error: `Variant with ID ${clientItem.variantId} not found or has no valid price for ${orderSource} orders` },
               { status: 400 }
@@ -229,7 +233,7 @@ export async function POST(request: Request) {
           if (dbProduct.variants.length > 0) {
             // Try to find a variant with appropriate price
             const defaultVariant = dbProduct.variants.find(v => 
-              orderSource === 'ONLINE' ? v.onlinePrice : v.inStorePrice
+              orderSource === 'ONLINE' ? v.onlinePrice !== null : v.inStorePrice !== null
             );
             
             if (defaultVariant) {
@@ -248,11 +252,16 @@ export async function POST(request: Request) {
           }
         }
 
+        // Type assertion to ensure price is not null at this point
+        // Since we've already validated price is not null in the conditions above,
+        // we can safely assert it as number
+        const validPrice = price as number;
+        
         // Validate quantity (must be positive integer)
         const quantity = Math.max(1, Math.floor(Number(clientItem.quantity) || 1));
         
         // Calculate item subtotal
-        const itemSubtotal = price * quantity;
+        const itemSubtotal = validPrice * quantity;
         serverSubtotal += itemSubtotal;
 
         // Find variant label
@@ -263,7 +272,7 @@ export async function POST(request: Request) {
         const baseItem: OrderItem = {
           productId: dbProduct.id,
           quantity,
-          price, // Using validated price from DB
+          price: validPrice, // Using validated price from DB
           variantId: clientItem.variantId || null,
           variantLabel: variantLabel,
         };
@@ -281,7 +290,7 @@ export async function POST(request: Request) {
           id: dbProduct.id,
           name: dbProduct.name,
           category: dbProduct.category,
-          price,
+          price: validPrice,
           quantity,
           variantLabel,
         });
@@ -299,7 +308,6 @@ export async function POST(request: Request) {
       let serverDiscountAmount = 0;
       let serverDiscountApprovalId: string | null = null;
       let serverDiscountDetails: DiscountDetails | null = null;
-      let highestPricedItem: ValidatedOrderItem | null = null;
       let highestPricedItemIndex = -1;
 
       // Only process discount if claimed
@@ -354,28 +362,40 @@ export async function POST(request: Request) {
           }
         }
 
-        // Find the highest priced item from VALIDATED items
-        // Compare by price per unit, not total
+        // ✅ FIXED: Find the highest priced item and use the temporary variable directly
         let highestPrice = -1;
-        
-        validatedItems.forEach((item, index) => {
-          if (item.price > highestPrice) {
-            highestPrice = item.price;
-            highestPricedItem = item;
-            highestPricedItemIndex = index;
-          }
-        });
+        let highestPricedItemIndexTemp = -1;
 
-        if (!highestPricedItem) {
+        for (let i = 0; i < validatedItems.length; i++) {
+          if (validatedItems[i].price > highestPrice) {
+            highestPrice = validatedItems[i].price;
+            highestPricedItemIndexTemp = i;
+          }
+        }
+
+        if (highestPricedItemIndexTemp === -1) {
           return NextResponse.json(
             { error: 'Cannot apply discount: no items in order' },
             { status: 400 }
           );
         }
 
+const highestPricedItemTemp = validatedItems[highestPricedItemIndexTemp];
+
+        // Check if we found a valid item
+        if (!highestPricedItemTemp) {
+          return NextResponse.json(
+            { error: 'Cannot apply discount: no items in order' },
+            { status: 400 }
+          );
+        }
+
+        // ✅ Use the temporary variable directly instead of reassigning
+        highestPricedItemIndex = highestPricedItemIndexTemp;
+
         // Calculate discount (20% of the highest priced item's SINGLE unit price)
         // NOT the total of multiple quantities
-        const discountPerItem = highestPricedItem.price * 0.2;
+        const discountPerItem = highestPricedItemTemp.price * 0.2;
         serverDiscountAmount = discountPerItem; // Apply to ONE quantity only
         
         // Mark that discount is applied
@@ -384,7 +404,7 @@ export async function POST(request: Request) {
 
         // Find the product name for the discounted item
         const discountedProduct = itemsForProductSales.find(
-          item => item.id === highestPricedItem?.productId
+          item => item.id === highestPricedItemTemp.productId
         );
 
         // Build discount details for storage
@@ -393,14 +413,14 @@ export async function POST(request: Request) {
           totalDiscount: serverDiscountAmount,
           calculationMethod: 'highest_priced_item',
           appliedToItem: {
-            id: highestPricedItem.productId,
+            id: highestPricedItemTemp.productId,
             name: discountedProduct?.name || 'Unknown',
-            originalPrice: highestPricedItem.price,
+            originalPrice: highestPricedItemTemp.price,
             quantity: 1, // Only one item gets discount
             discountAmount: serverDiscountAmount,
-            discountedPrice: highestPricedItem.price - serverDiscountAmount,
-            variantId: highestPricedItem.variantId,
-            variantLabel: highestPricedItem.variantLabel,
+            discountedPrice: highestPricedItemTemp.price - serverDiscountAmount,
+            variantId: highestPricedItemTemp.variantId,
+            variantLabel: highestPricedItemTemp.variantLabel,
           },
           itemsConsidered: itemsForProductSales.map(item => ({
             id: item.id,
@@ -485,13 +505,15 @@ export async function POST(request: Request) {
 
         // Store additional delivery info
         deliveryZipCode: deliveryZipCode || null,
-        locationData: userLocationData ? JSON.stringify(userLocationData) : null,
+        locationData: userLocationData ?? undefined,
 
         // SERVER-VALIDATED DISCOUNT FIELDS
         discountApplied: serverDiscountApplied,
         discountType: serverDiscountType,
         discountAmount: serverDiscountAmount,
-        discountDetails: serverDiscountDetails ? JSON.stringify(serverDiscountDetails) : null,
+        discountDetails: serverDiscountDetails 
+          ? serverDiscountDetails as unknown as Prisma.InputJsonValue 
+          : Prisma.JsonNull,
         
         // Connect to discount approval if validated
         ...(serverDiscountApprovalId && {
@@ -543,29 +565,6 @@ export async function POST(request: Request) {
           discountApproval: true,
         },
       });
-
-      // Create product sales records for analytics using server-validated data
-      // Uncomment if you have ProductSale model
-      /*
-      await Promise.all(
-        itemsForProductSales.map((item) =>
-          prisma.productSale.create({
-            data: {
-              productId: item.id,
-              orderId: order.id,
-              productName: item.name,
-              category: item.category || null,
-              unitPrice: item.price,
-              quantity: item.quantity,
-              total: item.price * item.quantity,
-              soldAt: new Date(),
-              // Add price type for tracking
-              priceType: orderSource === 'ONLINE' ? 'online' : 'in_store',
-            },
-          })
-        )
-      );
-      */
 
       // KIOSK response
       if (orderSource === 'KIOSK') {

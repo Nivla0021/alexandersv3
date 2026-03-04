@@ -14,10 +14,10 @@ interface User {
   emailVerified?: string | null;
 }
 
-
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
+  // ✅ FIXED: Add proper type annotation for filteredUsers
+  const [filteredUsers, setFilteredUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [isLoading, setIsLoading] = useState(true);
@@ -49,7 +49,6 @@ export default function UsersPage() {
       setIsLoading(false);
     }
   }
-
 
   useEffect(() => {
     fetchUsers();
@@ -109,8 +108,8 @@ export default function UsersPage() {
     }
   }
 
-  // DELETE USER
-  async function deleteUser(id) {
+  // DELETE USER - ✅ FIXED: Add proper type for id parameter
+  async function deleteUser(id: string) {
     if (!confirm("Are you sure you want to delete this user?")) return;
 
     try {
@@ -245,7 +244,6 @@ export default function UsersPage() {
                     </tr>
                 )}
                 </tbody>
-
             </table>
           </div>
         )}

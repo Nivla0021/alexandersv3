@@ -1,8 +1,20 @@
 // app/api/products/online/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
+
+// Define a type for products with variants included
+type ProductWithVariants = Prisma.ProductGetPayload<{
+  include: { 
+    variants: {
+      where: {
+        onlinePrice: { not: null }
+      }
+    } 
+  }
+}>;
 
 // GET endpoint for fetching online products with filters
 export async function GET(request: NextRequest) {
@@ -14,7 +26,7 @@ export async function GET(request: NextRequest) {
     const featured = searchParams.get('featured');
 
     // Build where clause for online products
-    const where: any = {
+    const where: Prisma.ProductWhereInput = {
       available: true,
       productType: { in: ['online', 'both'] },
     };
@@ -38,7 +50,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Build query options
-    const queryOptions: any = {
+    const queryOptions: Prisma.ProductFindManyArgs = {
       where,
       include: {
         variants: {
@@ -61,11 +73,11 @@ export async function GET(request: NextRequest) {
       queryOptions.take = parseInt(limit);
     }
 
-    // Fetch products
-    const products = await prisma.product.findMany(queryOptions);
+    // Fetch products and cast to the correct type
+    const products = await prisma.product.findMany(queryOptions) as ProductWithVariants[];
 
     // Filter out products that have no online variants
-    const onlineProducts = products.filter(product => product.variants.length > 0);
+    const onlineProducts = products.filter(product => product.variants && product.variants.length > 0);
 
     // Transform the data for the frontend
     const transformedProducts = onlineProducts.map(product => ({
@@ -85,8 +97,12 @@ export async function GET(request: NextRequest) {
         inStorePrice: variant.inStorePrice ? Number(variant.inStorePrice) : null,
         onlinePrice: Number(variant.onlinePrice),
       })),
-      minPrice: Math.min(...product.variants.map(v => Number(v.onlinePrice))),
-      maxPrice: Math.max(...product.variants.map(v => Number(v.onlinePrice))),
+      minPrice: product.variants.length > 0 
+        ? Math.min(...product.variants.map(v => Number(v.onlinePrice)))
+        : 0,
+      maxPrice: product.variants.length > 0 
+        ? Math.max(...product.variants.map(v => Number(v.onlinePrice)))
+        : 0,
       variantCount: product.variants.length,
     }));
 
@@ -116,7 +132,7 @@ export async function POST(request: NextRequest) {
 
     console.log('Fetching products for cart:', productIds);
 
-    // Fetch products by IDs
+    // Fetch products by IDs with proper typing
     const products = await prisma.product.findMany({
       where: {
         id: { in: productIds },
@@ -130,7 +146,7 @@ export async function POST(request: NextRequest) {
           },
         },
       },
-    });
+    }) as ProductWithVariants[];
 
     console.log('Found products:', products.length);
 

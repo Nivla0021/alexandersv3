@@ -462,7 +462,7 @@ export default function CheckoutPage() {
         isHighestPriced: isDiscounted,
         originalTotal: itemTotal,
         finalTotal: discountedPrice,
-        category: item.category,
+        category: (item as any).category,
       };
     });
   };
@@ -543,7 +543,7 @@ export default function CheckoutPage() {
           quantity: item.quantity,
           variantId: item.variantId,
           variantLabel: item.variantLabel,
-          category: item.category,
+          category: (item as any).category,
         })),
       };
 
@@ -1148,7 +1148,7 @@ if (showGcashQR && currentOrder) {
                     Scan Directly
                   </h3>
                   <ol className="list-decimal pl-5 space-y-2 text-gray-700">
-                    <li>Open GCash app and tap "Scan QR"</li>
+                    <li>Open GCash app and tap &quot;Scan QR&quot;</li>
                     <li>Point camera at the QR code above</li>
                     <li><strong>Enter amount: ₱{total.toFixed(2)}</strong></li>
                     <li>Add note: Order #{currentOrder.orderNumber}</li>
@@ -1164,9 +1164,9 @@ if (showGcashQR && currentOrder) {
                     Download & Upload
                   </h3>
                   <ol className="list-decimal pl-5 space-y-2 text-gray-700">
-                    <li>Click "Download QR Code" above</li>
+                    <li>Click &quot;Download QR Code&quot; above</li>
                     <li>Save image to your phone</li>
-                    <li>Open GCash → "Scan QR"</li>
+                    <li>Open GCash → &quot;Scan QR&quot;</li>
                     <li>Tap gallery icon in scanner</li>
                     <li>Select downloaded QR image</li>
                     <li><strong>Enter amount: ₱{total.toFixed(2)}</strong></li>
@@ -1442,7 +1442,7 @@ if (showGcashQR && currentOrder) {
                       <span className="font-medium">GCash (QR Code Payment)</span>
                     </div>
                     <p className="text-sm text-green-800 mt-2 ml-7">
-                      <strong>Note:</strong> After placing your order, you'll see a QR code to scan with your GCash app. 
+                      <strong>Note:</strong> After placing your order, you&apos;ll see a QR code to scan with your GCash app. 
                       Payment verification is manual and may take 15-30 minutes during business hours.
                     </p>
                   </div>

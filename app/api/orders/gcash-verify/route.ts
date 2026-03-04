@@ -72,13 +72,21 @@ export async function POST(request: Request) {
       );
     }
     
+    // ✅ FIXED: Build the where condition dynamically to avoid null values
+    const whereConditions = [];
+    
+    if (orderId) {
+      whereConditions.push({ id: orderId });
+    }
+    
+    if (orderNumber) {
+      whereConditions.push({ orderNumber: orderNumber });
+    }
+    
     // Find the order
     const order = await prisma.order.findFirst({
       where: {
-        OR: [
-          { id: orderId },
-          { orderNumber: orderNumber }
-        ]
+        OR: whereConditions.length > 0 ? whereConditions : undefined,
       },
       include: {
         orderItems: {

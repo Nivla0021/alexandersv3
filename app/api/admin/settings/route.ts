@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 
 // GET all settings (keys only)
 export async function GET() {
@@ -37,8 +38,12 @@ export async function PUT(req: Request) {
   // Delete old and create new with same value
   await prisma.setting.delete({ where: { key: oldKey } });
 
+  // ✅ FIXED: Cast the value to InputJsonValue to satisfy TypeScript
   const updated = await prisma.setting.create({
-    data: { key: newKey, value: existing.value }
+    data: { 
+      key: newKey, 
+      value: existing.value as Prisma.InputJsonValue
+    }
   });
 
   return NextResponse.json(updated);

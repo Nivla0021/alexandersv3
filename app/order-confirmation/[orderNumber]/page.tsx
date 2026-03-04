@@ -94,10 +94,11 @@ interface OrderWithDetails {
   }>;
 }
 
+// ✅ Updated: params is now a Promise
 interface PageProps {
-  params: {
+  params: Promise<{
     orderNumber: string;
-  };
+  }>;
 }
 
 async function getOrder(orderNumber: string): Promise<OrderWithDetails | null> {
@@ -160,8 +161,12 @@ function hadDiscount(item: any): boolean {
   return item.discountApplied || false;
 }
 
+// ✅ Updated: await params
 export default async function OrderConfirmationPage({ params }: PageProps) {
-  const order = await getOrder(params.orderNumber);
+  // Await the params to get the orderNumber
+  const { orderNumber } = await params;
+  
+  const order = await getOrder(orderNumber);
 
   if (!order) {
     notFound();

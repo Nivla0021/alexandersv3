@@ -1,3 +1,4 @@
+//app/api/admin/discounts/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
@@ -24,7 +25,7 @@ export async function GET(req: NextRequest) {
       where.status = status;
     }
 
-    // Fetch without order relation first
+    // ✅ FIXED: Include orders relation directly in the query
     const [applications, total] = await Promise.all([
       prisma.discountApproval.findMany({
         where,
@@ -37,15 +38,15 @@ export async function GET(req: NextRequest) {
               phone: true,
             },
           },
-          // Comment out order for now to test
-          // order: {
-          //   select: {
-          //     id: true,
-          //     orderNumber: true,
-          //     total: true,
-          //     createdAt: true,
-          //   },
-          // },
+          orders: { // ✅ Correct relation name from schema (plural)
+            select: {
+              id: true,
+              orderNumber: true,
+              total: true,
+              createdAt: true,
+            },
+            take: 1, // Only need the most recent order if multiple exist
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -56,27 +57,16 @@ export async function GET(req: NextRequest) {
       prisma.discountApproval.count({ where }),
     ]);
 
-    // If you need order information, you can fetch it separately
-    const applicationsWithOrders = await Promise.all(
-      applications.map(async (app) => {
-        if (app.orderId) {
-          const order = await prisma.order.findUnique({
-            where: { id: app.orderId },
-            select: {
-              id: true,
-              orderNumber: true,
-              total: true,
-              createdAt: true,
-            },
-          });
-          return { ...app, order };
-        }
-        return { ...app, order: null };
-      })
-    );
+    // ✅ Transform the data to include the first order if it exists
+    const applicationsWithOrder = applications.map((app) => ({
+      ...app,
+      order: app.orders && app.orders.length > 0 ? app.orders[0] : null,
+      // Remove the orders array if you don't need it in the response
+      orders: undefined,
+    }));
 
     return NextResponse.json({
-      applications: applicationsWithOrders,
+      applications: applicationsWithOrder,
       pagination: {
         page,
         limit,

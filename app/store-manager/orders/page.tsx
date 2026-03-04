@@ -6,34 +6,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Package, CheckCircle, ShoppingBag } from 'lucide-react';
 import { OrderCard } from '@/components/order-card';
+import { OrderPayload } from '@/types/order'; // ✅ Import the OrderPayload type
 
-interface Order {
-  id: string;
-  orderNumber: string;
-  customerName: string;
-  orderStatus: string;
-  createdAt: string;
-  orderItems: {
-    id: string;
-    quantity: number;
-    price: number;
-    variantLabel?: string | null; // added
-    product: {
-      name: string;
-    };
-  }[];
-  orderSource: string;
-  subtotal: number;
-  total: number;
-  orderMode?: string;
-  transactionNumber?: string;
-  orderNotes?: string;
-  customerEmail?: string;
-  customerPhone?: string;
-  deliveryAddress?: string;
-  paymentMethod?: string;
-  paymentStatus?: string;
-}
+// ✅ Use OrderPayload directly to match what OrderCard expects
+type Order = OrderPayload;
 
 export default function AdminOrdersPage() {
   const { data: session, status } = useSession() || {};
@@ -49,7 +25,6 @@ export default function AdminOrdersPage() {
       style: 'currency',
       currency: 'PHP'
   });
-
 
   // Fetch ----------------------------------------------------------------------------------------
   useEffect(() => {
@@ -153,7 +128,8 @@ export default function AdminOrdersPage() {
     const matchesStatus = ['confirmed', 'mark as ready', 'order claimed']
       .includes(o.orderStatus.toLowerCase());
 
-    const matchesDate = isToday(o.createdAt);
+    // ✅ Handle optional createdAt
+    const matchesDate = o.createdAt ? isToday(o.createdAt) : false;
 
     const q = debouncedSearch.toLowerCase();
 
@@ -167,6 +143,7 @@ export default function AdminOrdersPage() {
 
     return matchesStatus && matchesDate && matchesSearch && matchesSource;
   });
+  
   // Status Color ----------------------------------------------------------------------------------
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -200,8 +177,6 @@ export default function AdminOrdersPage() {
         return 'bg-gray-100 text-gray-800';
     }
   };
-
-
 
   // UI Loading ------------------------------------------------------------------------------------
   if (status === 'loading' || loading) {
@@ -312,7 +287,5 @@ export default function AdminOrdersPage() {
       })()}
     </main>
   </div>
-);
-
-
+  );
 }

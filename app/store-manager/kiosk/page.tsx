@@ -9,7 +9,7 @@ type Variant = {
   id: string;
   label: string;
   price: number; // This will be the inStorePrice for kiosk
-  inStorePrice: number | null;
+  inStorePrice: number; // ✅ Changed from number | null to number (required)
   onlinePrice?: number | null; // Optional for kiosk
   productId: string;
 };
@@ -63,7 +63,7 @@ async function getProducts(): Promise<Product[]> {
             id: v.id,
             label: v.label,
             price: parseFloat(v.inStorePrice), // Use inStorePrice for kiosk display
-            inStorePrice: parseFloat(v.inStorePrice),
+            inStorePrice: parseFloat(v.inStorePrice), // ✅ Now always a number
             onlinePrice: v.onlinePrice ? parseFloat(v.onlinePrice) : null,
             productId: p.id,
           })) ?? [],

@@ -1,3 +1,4 @@
+//app/api/admin/discounts/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
@@ -34,9 +35,10 @@ export async function GET(
             phone: true,
           },
         },
-        order: {
+        // ✅ FIXED: Changed 'order' to 'orders' (plural)
+        orders: {
           include: {
-            items: true,
+          orderItems: true,
           },
         },
       },

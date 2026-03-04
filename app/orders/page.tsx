@@ -175,7 +175,8 @@ export default function OrdersPage() {
     return status.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
-  const formatDiscountType = (type: string | null): string => {
+  // ✅ FIXED: Handle undefined as well
+  const formatDiscountType = (type: string | null | undefined): string => {
     if (!type) return '';
     return type === 'PWD' ? 'PWD Discount' : 'Senior Citizen Discount';
   };

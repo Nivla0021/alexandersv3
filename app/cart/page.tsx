@@ -99,7 +99,7 @@ export default function CartPage() {
     setRetryCount(prev => prev + 1);
   };
 
-  // Check if any items are unavailable
+  // ✅ FIXED: Check if any items are unavailable
   const unavailableItems = items.filter(item => {
     const product = products[item.id];
     if (!product) return true; // Product not found in fetched data
@@ -107,7 +107,11 @@ export default function CartPage() {
     // Check if product is available online
     const isOnlineAvailable = product.productType === 'online' || product.productType === 'both';
     const variant = product.variants.find(v => v.id === item.variantId);
-    const hasOnlinePrice = variant?.onlinePrice !== null && variant?.onlinePrice > 0;
+    
+    // Check if variant exists and has a valid online price
+    const hasOnlinePrice = variant?.onlinePrice !== null && 
+                           variant?.onlinePrice !== undefined && 
+                           variant?.onlinePrice > 0;
     
     return !product.available || !isOnlineAvailable || !hasOnlinePrice;
   });
@@ -206,7 +210,12 @@ export default function CartPage() {
                     const isAvailable = product?.available ?? true;
                     const isOnlineAvailable = product?.productType === 'online' || product?.productType === 'both';
                     const variant = product?.variants.find(v => v.id === item.variantId);
-                    const hasOnlinePrice = variant?.onlinePrice !== null && variant?.onlinePrice > 0;
+                    
+                    // ✅ FIXED: Check if variant has valid online price
+                    const hasOnlinePrice = variant?.onlinePrice !== null && 
+                                           variant?.onlinePrice !== undefined && 
+                                           variant?.onlinePrice > 0;
+                    
                     const isItemAvailable = !isLoading && isAvailable && isOnlineAvailable && hasOnlinePrice;
 
                     return (
@@ -270,7 +279,7 @@ export default function CartPage() {
                                 const selected = product.variants.find(
                                   (v) => v.id === e.target.value
                                 );
-                                if (selected && selected.onlinePrice) {
+                                if (selected && selected.onlinePrice && selected.onlinePrice > 0) {
                                   updateVariant(
                                     item.id,
                                     selected.id,
@@ -282,7 +291,7 @@ export default function CartPage() {
                               className="border border-gray-300 rounded-lg px-3 py-1 mb-2 text-sm w-full max-w-xs"
                             >
                               {product.variants
-                                .filter(v => v.onlinePrice !== null && v.onlinePrice > 0)
+                                .filter(v => v.onlinePrice !== null && v.onlinePrice !== undefined && v.onlinePrice > 0)
                                 .map((v) => (
                                   <option key={v.id} value={v.id}>
                                     {v.label} - ₱{v.onlinePrice?.toFixed(2)}

@@ -16,7 +16,7 @@ export function AdminHeader() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-amber-900">Admin Panel</h1>
-                <p className="text-sm text-gray-600">Alexander's Cuisine</p>
+                <p className="text-sm text-gray-600">Alexander&apos;s Cuisine</p>
               </div>
             </div>
             <div className="flex items-center space-x-4 relative">

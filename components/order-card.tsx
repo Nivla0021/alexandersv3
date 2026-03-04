@@ -3,12 +3,35 @@ import React, { useState, useEffect } from 'react';
 import { ShoppingBag, Award, Percent, ChevronRight, Info, Truck } from 'lucide-react';
 import { OrderPayload } from '@/types/order';
 
+// Extend the OrderItem type locally to include variantLabel
+interface ExtendedOrderItem {
+  id: string;
+  quantity: number;
+  price: number;
+  variantLabel?: string | null;
+  discountApplied?: boolean;
+  discountedPrice?: number | null;
+  product: {
+    name: string;
+  };
+}
+
+// Extend OrderPayload to include all the fields used in the component
+interface ExtendedOrderPayload extends Omit<OrderPayload, 'orderItems'> {
+  orderItems: ExtendedOrderItem[];
+  discountApplied?: boolean;
+  discountType?: string | null;
+  discountAmount?: number | null;
+  discountDetails?: any;
+  deliveryFee?: number;
+}
+
 interface OrderCardProps {
-  order: OrderPayload;
+  order: ExtendedOrderPayload;
   showCancel?: boolean;
   setSelectedNotes?: (notes: string | null) => void;
   updateOrderStatus?: (id: string, status: string) => void;
-  getNextStatuses?: (order: OrderPayload) => string[];
+  getNextStatuses?: (order: ExtendedOrderPayload) => string[];
   getModeColor?: (mode: string) => string;
   getStatusColor?: (status: string) => string;
   formatPhp?: (value: number) => string;
@@ -23,6 +46,11 @@ interface DiscountedItemInfo {
   discountedPrice: number;
   variantLabel?: string;
 }
+
+// Helper function to safely get delivery fee
+const getDeliveryFee = (order: ExtendedOrderPayload): number => {
+  return order.deliveryFee || 0;
+};
 
 export function OrderCard({ 
   order,
@@ -39,7 +67,7 @@ export function OrderCard({
   const [givenAmount, setGivenAmount] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [change, setChange] = useState<number>(0);
-  const [selectedOrder, setSelectedOrder] = useState<OrderPayload | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<ExtendedOrderPayload | null>(null)
   const [showModal, setShowModal] = useState(false);
   
   // New state for KIOSK discount
@@ -57,8 +85,9 @@ export function OrderCard({
   // Determine if order is from KIOSK
   const isKioskOrder = order.orderSource === 'KIOSK';
   
-  // For KIOSK orders, delivery fee should be 0 (double-check)
-  const effectiveDeliveryFee = isKioskOrder ? 0 : (order.deliveryFee || 0);
+  // Safely get delivery fee
+  const orderDeliveryFee = getDeliveryFee(order);
+  const effectiveDeliveryFee = isKioskOrder ? 0 : orderDeliveryFee;
 
   // Calculate discount for KIOSK orders when eligibility is selected
   useEffect(() => {
@@ -90,7 +119,7 @@ export function OrderCard({
     }
   }, [discountEligible, discountType, order.orderItems, isKioskOrder]);
 
-  const showDetailsModal = (order: OrderPayload) => {
+  const showDetailsModal = (order: ExtendedOrderPayload) => {
     setSelectedOrder(order);
     setShowModal(true);
   };
@@ -151,7 +180,7 @@ export function OrderCard({
   // Check if order has delivery fee (only for ONLINE orders and fee > 0)
   const hasDeliveryFee = !isKioskOrder && effectiveDeliveryFee > 0;
 
-  const printReceipt = async (order: OrderPayload, given: number, change: number) => {
+  const printReceipt = async (order: ExtendedOrderPayload, given: number, change: number) => {
     setReceiptLoading(true);
     
     // Simulate API/database call delay
@@ -277,7 +306,7 @@ export function OrderCard({
   };
 
 
-  const printOnlineReceipt = async (order: OrderPayload) => {
+  const printOnlineReceipt = async (order: ExtendedOrderPayload) => {
     setOnlineReceiptLoading(true);
     
     // Simulate API/database call delay

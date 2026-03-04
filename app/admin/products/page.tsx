@@ -101,10 +101,14 @@ export default function AdminProductsPage() {
       // Map variants to ensure prices are strings for the form
       const productsWithVariants = (data ?? []).map((product: any) => ({
         ...product,
-        // Map database 'in_store' to frontend 'in-store'
+        // ✅ FIXED: Map database 'in_store' to frontend 'in-store'
         productType: product.productType === 'in_store' 
-          ? 'in-store' 
-          : product.productType || 'both',
+          ? 'in-store' as const
+          : product.productType === 'in-store' 
+            ? 'in-store' as const
+            : product.productType === 'online' 
+              ? 'online' as const
+              : 'both' as const,
         variants: product.variants?.map((v: any) => ({
           ...v,
           inStorePrice: v.inStorePrice?.toString() || '',
@@ -253,8 +257,8 @@ export default function AdminProductsPage() {
       category: product.category || '',
       available: product.available,
       featured: product.featured,
-      // Ensure product type is in the correct format for the form
-      productType: product.productType === 'in_store' ? 'in-store' : product.productType || 'both',
+      // ✅ FIXED: Ensure product type is in the correct format for the form
+      productType: product.productType,
       variants: product.variants.map((v) => ({
         label: v.label,
         inStorePrice: v.inStorePrice?.toString() || '',
